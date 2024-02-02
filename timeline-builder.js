@@ -2,20 +2,13 @@ const dayjs = require('dayjs')
 
 var isoWeeksInYear = require('dayjs/plugin/isoWeeksInYear')
 var isLeapYear = require('dayjs/plugin/isLeapYear')
-var quarterOfYear = require('dayjs/plugin/quarterOfYear')
 var isoWeek = require('dayjs/plugin/isoWeek')
 var weekday = require('dayjs/plugin/weekday')
 
 dayjs.extend(weekday)
 dayjs.extend(isoWeek)
-dayjs.extend(quarterOfYear)
 dayjs.extend(isoWeeksInYear)
 dayjs.extend(isLeapYear)
-
-
-
-
-
 
 
 // function that returns the number of 
@@ -202,6 +195,75 @@ function drawIterations(year, weekOffset, DayOffset, daysPerIteration, startNumb
 
 }
 
-drawWeeks(getWeeks(2024), settings)
-drawMonths(getWorkingDaysPerMonth(2024), settings)
-drawIterations(2024,1,2,10,1,"Sprint ", "/24", settings)
+function drawQuarters(year, qOneStartMonth, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+    } = settings;
+
+    let quarterX = settings.startX;
+    let quarterY = settings.startY - 3 * (shapeHeight + padding);
+
+    const quarters = getWorkingDaysPerQuarter(year, qOneStartMonth);
+
+    quarters.forEach(quarter => {
+        quarterWidth = ((shapeWidth + padding) * quarter.workingDays - padding);
+        drawRectangle(quarter.quarter, getColor(quarters.indexOf(quarter), "quarter"), quarterWidth, shapeHeight, quarterX, quarterY);
+        quarterX += quarterWidth + padding;
+    });
+}
+
+function getWorkingDaysBetweenMonths(year, startMonth, endMonth) {
+
+  const months = getWorkingDaysPerMonth(year);
+
+  return months.reduce((total, month, index) => {
+    if(index >= startMonth && index < endMonth){
+      return total + month.workingDays;
+    }
+    return total;
+  }, 0);
+
+}
+
+
+function getWorkingDaysPerQuarter(year, qOneStartMonth) {
+    const quarters = [];
+    
+    const startMonths = [];
+    startMonths.push(qOneStartMonth);
+
+    for (let q = 1; q <= 3; q++) {
+        startMonths.push( q * 3 + qOneStartMonth );
+    }
+
+    const months = getWorkingDaysPerMonth(year);
+
+    if (qOneStartMonth > 0) {
+        quarters.push({
+          quarter: "Q4/" + (year - 1).toString(),  
+          workingDays: getWorkingDaysBetweenMonths(year, 0, qOneStartMonth)
+        });
+      };
+    
+    startMonths.forEach((startMonthOfCurrentQuarter, indexOfCurrentStartMonth) => {
+        let startMonthOfNextQuarter = indexOfCurrentStartMonth + 1 < startMonths.length 
+            ? startMonths[indexOfCurrentStartMonth + 1]
+            : 12;
+  
+        quarters.push({
+            quarter: "Q" + (startMonths.indexOf(startMonthOfCurrentQuarter) + 1).toString() + "/" + year.toString(),
+            workingDays: getWorkingDaysBetweenMonths(year, startMonthOfCurrentQuarter, startMonthOfNextQuarter) 
+        });
+    });
+
+    return quarters;
+
+
+}
+
+// drawWeeks(getWeeks(2024), settings)
+// drawMonths(getWorkingDaysPerMonth(2024), settings)
+// drawIterations(2024,1,2,10,1,"Sprint ", "/24", settings)
+// drawQuarters(2024, 1, settings)
