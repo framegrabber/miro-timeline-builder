@@ -136,3 +136,32 @@ function drawMonths(months, settings) {
     });
 
 }
+
+//function to draw the weeks and days
+// takes the output of getWorkingDaysPerMonth
+function drawWeeks(weeks, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+        } = settings;
+
+    let weekX = settings.startX;
+    let weekY = settings.startY;
+    let dayX  = settings.startX;
+    let dayY  = settings.startY + shapeHeight + padding;
+
+    const weekWidth = shapeWidth * 5 + 4 * padding;
+
+    weeks.forEach(week => {
+        drawRectangle(week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
+        weekX += weekWidth + padding;
+        week.days.forEach(day => {
+            drawRectangle(day.toString(), getColor(day, "day"), shapeWidth, shapeHeight, dayX, dayY);
+            dayX += shapeWidth + padding;
+        });
+    });
+
+}
+
+console.log(getWeeks(2024));
