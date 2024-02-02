@@ -1,44 +1,55 @@
-function drawWeeks(weeks, settings) {
-    const {
-        shapeWidth,
-        shapeHeight,
-        padding
-      } = settings;
+const dayjs = require('dayjs')
 
-    let weekX = settings.startX;
-    let weekY = settings.startY;
-    let dayX  = settings.startX;
-    let dayY  = settings.startY + shapeHeight + padding;
+var isoWeeksInYear = require('dayjs/plugin/isoWeeksInYear')
+var isLeapYear = require('dayjs/plugin/isLeapYear')
+var quarterOfYear = require('dayjs/plugin/quarterOfYear')
+var isoWeek = require('dayjs/plugin/isoWeek')
+var weekday = require('dayjs/plugin/weekday')
 
-    const weekWidth = shapeWidth * 5 + 4 * padding;
+dayjs.extend(weekday)
+dayjs.extend(isoWeek)
+dayjs.extend(quarterOfYear)
+dayjs.extend(isoWeeksInYear)
+dayjs.extend(isLeapYear)
 
-    weeks.forEach(week => {
-        drawRectangle(week.week.toString(), getColor(week.week, "week"), weekWidth, shapeHeight, weekX, weekY);
-        weekX += weekWidth + padding;
-        week.days.forEach(day => {
-            drawRectangle(day.toString(), getColor(day, "day"), shapeWidth, shapeHeight, dayX, dayY);
-            dayX += shapeWidth + padding;
-        });
-    });
+
+
+
+
+
+
+// function that returns the number of 
+// weeks for a given year
+function getWeeksInYear(year) {
+    return dayjs(year, 'YYYY').isoWeeksInYear();
 }
 
-async function drawRectangle(content, color, width, height, x, y){
-    await miro.board.createShape({
-        content: content,
-        type: "shape",
-        shape: "rectangle",
-        width: width,
-        height: height,
-        x: x + width / 2,
-        y: y + height / 2,
-        style: {
-          fillColor: color,
-          fontFamily: 'open_sans',
-          fontSize: height / 2.5,
-          borderWidth: 0,
-        },
-      })
- };
+
+
+// function that calculates the number of working days per month for a given year
+// using dayjs.isoWeekday and returns an array of objects
+// that show the month and the number of working days
+function getWorkingDaysPerMonth(year) {
+    const months = [];
+    
+    for (let m = 0; m <= 11; m++) {
+        let workingDays = 0;
+    
+        const month = dayjs().year(year).month(m);
+        const totalDays = month.daysInMonth();
+
+        for (let day = 1; day <= totalDays; day++) {
+            if (month.date(day).isoWeekday() <= 5) {
+                workingDays++;
+            }
+        }
+       
+        months.push({ month: month.format('MMMM'), workingDays });
+    }
+    return months;
+}
+
+
 
 function getColor(number, type) {
     const weekColors      = ["#ffc107", "#ff9800"];
@@ -60,48 +71,48 @@ function getColor(number, type) {
     }
 }
 
-function getNumberOfCalendarWeeks(year) {
+async function drawRectangle(content, color, width, height, x, y){
+    await miro.board.createShape({
+        content: content,
+        type: "shape",
+        shape: "rectangle",
+        width: width,
+        height: height,
+        x: x + width / 2,
+        y: y + height / 2,
+        style: {
+          fillColor: color,
+          fontFamily: 'open_sans',
+          fontSize: height / 2.5,
+          borderWidth: 0,
+        },
+      })
+    };
 
-    const isoCalendar = new Intl.DateTimeFormat('en-US', {calendar: 'iso8601'})
-
-    const jan1 = new Date(year, 0, 1)
-    const dec31 = new Date(year, 11, 31)
-
-    const startWeek = isoCalendar.getWeekOfYear(jan1) 
-    const endWeek = isoCalendar.getWeekOfYear(dec31)
-
-    return endWeek;
-}
-
-console.log(getNumberOfCalendarWeeks(2022));
-console.log(getNumberOfCalendarWeeks(2023));
-console.log(getNumberOfCalendarWeeks(2024));
-console.log(getNumberOfCalendarWeeks(2025));
+const settings = {
+    shapeWidth: 100,
+    shapeHeight: 100,
+    padding: 2,
+    startX: 500,
+    startY: 500
+    };
 
 
 
-function weeks(year) {
-    var weeks = [];
-    for (var i = 1; i <= 53; i++) {
-        weeks.push({
-            week: i,
-            days: workingDaysPerWeek(i, year)
-        });
-    }
-    return weeks;
-}
+function drawMonths(months, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+        } = settings;
+    
+        let monthX = settings.startX;
+        let monthY = settings.startY - 2 * (shapeHeight + padding);
+    
+    months.forEach(month => {
+        monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
+        drawRectangle(month.month, getColor(months.indexOf(month), "month"), monthWidth, shapeHeight, monthX, monthY);
+        monthX += monthWidth + padding;
+    });
 
-function workingDaysPerWeek(week, year) {
-    var date = new Date(year, 0, 1 + (week - 1) * 7);
-    var days = [];
-    while (isWeekday(date)) {
-        days.push(new Date(date).getDate());
-        date.setDate(date.getDate() + 1);
-    }
-    return days;
-}
-
-function isWeekday(date) {
-  const day = date.getDay();
-  return day !== 0 && day !== 6;
 }
