@@ -8,6 +8,11 @@ window.dayjs.extend(window.dayjs_plugin_isLeapYear)
 window.dayjs.extend(window.dayjs_plugin_isoWeek)
 window.dayjs.extend(window.dayjs_plugin_weekday)
 
+drawWeeks(2024, settings)
+drawMonths(2024, settings)
+drawIterations(2024, settings)
+drawQuarters(2024, settings)
+
 
 // run this to generate import end extend lines
 // plugins = ["isoWeeksInYear", "isLeapYear", "quarterOfYear", "isoWeek", "weekday"]
