@@ -35,6 +35,8 @@ function getWorkingDayDatesPerWeek(week, year) {
     return weekDays;
 }
 
+
+
 // function that iterates over all weeks of a given 
 // year and returns an array of objects
 // that show the weeknumber and the dates of the week days
@@ -70,6 +72,18 @@ function getWorkingDaysPerMonth(year) {
 }
 
 
+// function that sums up all working days per year and returns the sum
+// takes the output of getWorkingDaysPerMonth as input
+function getTotalWorkingDaysPerYear(year) {
+
+    months = getWorkingDaysPerMonth(year);
+
+    let sum = 0;
+    for (let i = 0; i < months.length; i++) {
+        sum += months[i].workingDays;
+    }
+    return sum;
+}
 
 function getColor(number, type) {
     const weekColors      = ["#ffc107", "#ff9800"];
@@ -164,4 +178,30 @@ function drawWeeks(weeks, settings) {
 
 }
 
-console.log(getWeeks(2024));
+function drawIterations(year, weekOffset, DayOffset, daysPerIteration, startNumber, prefix, suffix, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+      } = settings;
+
+    let iterationX = settings.startX + (weekOffset * 5 + DayOffset) * (shapeWidth + padding);
+    let iterationY = settings.startY - shapeHeight - padding;
+
+    const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - weekOffset * 5 - DayOffset) / daysPerIteration);
+
+    const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
+
+    for (let iteration = 0; iteration < numberOfIterations; iteration++) {
+        drawRectangle(prefix + (iteration + startNumber).toString() + suffix,
+                      getColor(iteration, "iteration"),
+                      iterationWidth, shapeHeight,
+                      iterationX, iterationY);
+        iterationX += iterationWidth + padding;
+    }
+
+}
+
+drawWeeks(getWeeks(2024), settings)
+drawMonths(getWorkingDaysPerMonth(2024), settings)
+drawIterations(2024,1,2,10,1,"Sprint ", "/24", settings)
