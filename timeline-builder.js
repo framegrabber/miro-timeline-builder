@@ -24,7 +24,27 @@ function getWeeksInYear(year) {
     return dayjs(year, 'YYYY').isoWeeksInYear();
 }
 
+// function that accepts a week and a year
+// and returns an array of the dates of month
+function getWorkingDayDatesPerWeek(week, year) {
+    const weekDays = [];
+    for (let day = 1; day <= 5; day++) {
+        const date = dayjs().year(year).isoWeek(week).isoWeekday(day);
+        weekDays.push(date.format('DD'));
+    }
+    return weekDays;
+}
 
+// function that iterates over all weeks of a given 
+// year and returns an array of objects
+// that show the weeknumber and the dates of the week days
+function getWeeks(year) {
+    const weeks = [];
+    for (let week = 1; week <= getWeeksInYear(year); week++) {
+        weeks.push({ weekNumber: week, days: getWorkingDayDatesPerWeek(week, year) });
+    }
+    return weeks;
+}
 
 // function that calculates the number of working days per month for a given year
 // using dayjs.isoWeekday and returns an array of objects
