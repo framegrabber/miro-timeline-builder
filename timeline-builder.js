@@ -116,13 +116,7 @@ async function drawRectangle(content, color, width, height, x, y){
       })
     };
 
-const settings = {
-    shapeWidth: 100,
-    shapeHeight: 100,
-    padding: 2,
-    startX: 500,
-    startY: 500
-    };
+
 
 
 
@@ -171,22 +165,28 @@ function drawWeeks(weeks, settings) {
 
 }
 
-function drawIterations(year, weekOffset, DayOffset, daysPerIteration, startNumber, prefix, suffix, settings) {
+function drawIterations(year, settings) {
     const {
         shapeWidth,
         shapeHeight,
-        padding
+        padding,
+        IterationWeekOffset,
+        IterationDayOffset,
+        daysPerIteration,
+        IterationStartNumber,
+        IterationPrefix,
+        IterationSuffix
       } = settings;
 
-    let iterationX = settings.startX + (weekOffset * 5 + DayOffset) * (shapeWidth + padding);
+    let iterationX = settings.startX + (IterationWeekOffset * 5 + IterationDayOffset) * (shapeWidth + padding);
     let iterationY = settings.startY - shapeHeight - padding;
 
-    const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - weekOffset * 5 - DayOffset) / daysPerIteration);
+    const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - IterationWeekOffset * 5 - IterationDayOffset) / daysPerIteration);
 
     const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
 
     for (let iteration = 0; iteration < numberOfIterations; iteration++) {
-        drawRectangle(prefix + (iteration + startNumber).toString() + suffix,
+        drawRectangle(IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
                       getColor(iteration, "iteration"),
                       iterationWidth, shapeHeight,
                       iterationX, iterationY);
@@ -263,7 +263,24 @@ function getWorkingDaysPerQuarter(year, qOneStartMonth) {
 
 }
 
+const settings = {
+    shapeWidth: 100,
+    shapeHeight: 100,
+    padding: 2,
+    startX: 500,
+    startY: 500,
+    IterationWeekOffset: 1,
+    IterationDayOffset: 2,
+    daysPerIteration: 10,
+    IterationStartNumber: 1,
+    IterationPrefix: "Iteration ",
+    IterationSuffix: "/24"
+    };
+
 // drawWeeks(getWeeks(2024), settings)
 // drawMonths(getWorkingDaysPerMonth(2024), settings)
-// drawIterations(2024,1,2,10,1,"Sprint ", "/24", settings)
+// drawIterations(2024, settings)
 // drawQuarters(2024, 1, settings)
+
+// TODO: drawWeeks and drawMonths should just accept the year and the settings
+//       drawIterations should get everything except the year from the settings
