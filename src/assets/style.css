@@ -1,0 +1,32 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.scrollable-container {
+  height: 100%;
+  overflow-y: auto;
+  padding-top: 30px;
+  padding-left: 23px;
+  padding-bottom: 20px;
+  box-sizing: border-box;
+}
+
+label {
+	font-weight: 600;
+  padding-top: 2rem;
+}
+
+.scrollable-container .buttons {
+	position: sticky;
+	bottom: -20px;
+	padding-block: var(--space-medium);
+	background: #fff;
+}
+
+.button {
+  width: 100%;
+  text-align: center;
+}

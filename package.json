@@ -1,0 +1,17 @@
+{
+  "name": "timeline-builder",
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.10",
+    "mirotone": "5"
+  },
+  "devDependencies": {
+    "vite": "^3.2.8"
+  }
+}
