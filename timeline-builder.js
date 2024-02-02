@@ -120,7 +120,7 @@ async function drawRectangle(content, color, width, height, x, y){
 
 
 
-function drawMonths(months, settings) {
+function drawMonths(year, settings) {
     const {
         shapeWidth,
         shapeHeight,
@@ -129,6 +129,8 @@ function drawMonths(months, settings) {
     
         let monthX = settings.startX;
         let monthY = settings.startY - 2 * (shapeHeight + padding);
+
+    const months = getWorkingDaysPerMonth(year);
     
     months.forEach(month => {
         monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
@@ -139,8 +141,7 @@ function drawMonths(months, settings) {
 }
 
 //function to draw the weeks and days
-// takes the output of getWorkingDaysPerMonth
-function drawWeeks(weeks, settings) {
+function drawWeeks(year, settings) {
     const {
         shapeWidth,
         shapeHeight,
@@ -153,6 +154,8 @@ function drawWeeks(weeks, settings) {
     let dayY  = settings.startY + shapeHeight + padding;
 
     const weekWidth = shapeWidth * 5 + 4 * padding;
+
+    const weeks = getWeeks(year);
 
     weeks.forEach(week => {
         drawRectangle(week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
@@ -195,11 +198,12 @@ function drawIterations(year, settings) {
 
 }
 
-function drawQuarters(year, qOneStartMonth, settings) {
+function drawQuarters(year, settings) {
     const {
         shapeWidth,
         shapeHeight,
-        padding
+        padding,
+        qOneStartMonth
     } = settings;
 
     let quarterX = settings.startX;
@@ -274,13 +278,6 @@ const settings = {
     daysPerIteration: 10,
     IterationStartNumber: 1,
     IterationPrefix: "Iteration ",
-    IterationSuffix: "/24"
+    IterationSuffix: "/24",
+    qOneStartMonth: 1
     };
-
-// drawWeeks(getWeeks(2024), settings)
-// drawMonths(getWorkingDaysPerMonth(2024), settings)
-// drawIterations(2024, settings)
-// drawQuarters(2024, 1, settings)
-
-// TODO: drawWeeks and drawMonths should just accept the year and the settings
-//       drawIterations should get everything except the year from the settings
