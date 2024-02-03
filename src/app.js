@@ -116,11 +116,11 @@ document
   }
   
   function getColor(number, type) {
-      const weekColors      = ["#ffc107", "#ff9800"];
-      const dayColors       = ["#448aff", "#1565c0"];
-      const monthColors     = ["#f44336", "#ad1457"];
-      const iterationColors = ["#009688", "#8bc34a"];
-      const quarterColors   = ["#119633", "#2bc74f"];
+      const weekColors      = ["#8e8be1", "#7e7cc8"];
+      const dayColors       = ["#d8aa78", "#f0be86"];
+      const monthColors     = ["#8ddebd", "#9df7d2"];
+      const iterationColors = ["#d37b97", "#ea88a8"];
+      const quarterColors   = ["#82adc2", "#a0d5ef"];
   
       if (type === "week") {
           return number % 2 === 0 ? weekColors[0] : weekColors[1];
