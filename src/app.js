@@ -29,8 +29,8 @@ async function getSettings() {
     });
 
     const viewport = await miro.board.viewport.get();
-    settings.startX = viewport.x;
-    settings.startY = viewport.y;
+    settings.startX = viewport.x + viewport.width/2;
+    settings.startY = viewport.y + viewport.height/2;
 
     return settings;
 }
@@ -306,7 +306,7 @@ document
   }
 
   async function drawCalendar() {
-    const settings = getSettings();
+    const settings = await getSettings();
     const year = settings.year;
 
     await drawMonths(year, settings);
