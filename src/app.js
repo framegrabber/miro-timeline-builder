@@ -136,7 +136,7 @@ document
   }
   
   async function drawRectangle(content, color, width, height, x, y){
-      return board.createShape({
+      await board.createShape({
           content: content,
           type: "shape",
           shape: "rectangle",
@@ -154,7 +154,7 @@ document
       };
   
 
-  async function drawMonths(year, frame, settings) {
+  async function drawMonths(year, settings) {
       const {
           shapeWidth,
           shapeHeight,
@@ -168,23 +168,14 @@ document
       
       months.forEach(month => {
           let monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
-          drawRectangle(
-            month.month,
-            getColor(months.indexOf(month), "month"),
-            monthWidth,
-            shapeHeight,
-            monthX,
-            monthY
-            ).then(rect => {
-                frame.add(rect)
-            });
+          drawRectangle(month.month, getColor(months.indexOf(month), "month"), monthWidth, shapeHeight, monthX, monthY);
           monthX += monthWidth + padding;
       });
   
   }
   
   //function to draw the weeks and days
-  async function drawWeeks(year, frame, settings) {
+  async function drawWeeks(year, settings) {
       const {
           shapeWidth,
           shapeHeight,
@@ -201,35 +192,17 @@ document
       const weeks = getWeeks(year);
   
       weeks.forEach(week => {
-          drawRectangle(
-            week.weekNumber.toString(),
-            getColor(week.weekNumber, "week"),
-            weekWidth,
-            shapeHeight,
-            weekX,
-            weekY
-            ).then(weekRect => {
-                frame.add(weekRect)
-            });
+          drawRectangle(week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
           weekX += weekWidth + padding;
-          
           week.days.forEach(day => {
-            drawRectangle(
-                day.toString(),
-                getColor(day, "day"),
-                shapeWidth,
-                shapeHeight,
-                dayX,dayY
-            ).then(dayRect => {
-                frame.add(dayRect)
-            });
+              drawRectangle(day.toString(), getColor(day, "day"), shapeWidth, shapeHeight, dayX, dayY);
               dayX += shapeWidth + padding;
           });
       });
   
   }
   
-  async function drawIterations(year, frame, settings) {
+  async function drawIterations(year, settings) {
       const {
           shapeWidth,
           shapeHeight,
@@ -250,21 +223,16 @@ document
       const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
   
       for (let iteration = 0; iteration < numberOfIterations; iteration++) {
-        drawRectangle(
-            IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
-            getColor(iteration, "iteration"),
-            iterationWidth, shapeHeight,
-            iterationX, iterationY
-        ).then(rect => {
-            frame.add(rect)
-        });
-        
-        iterationX += iterationWidth + padding;
+          drawRectangle(IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
+                        getColor(iteration, "iteration"),
+                        iterationWidth, shapeHeight,
+                        iterationX, iterationY);
+          iterationX += iterationWidth + padding;
       }
   
   }
   
-  async function drawQuarters(year, frame, settings) {
+  async function drawQuarters(year, settings) {
       const {
           shapeWidth,
           shapeHeight,
@@ -279,17 +247,7 @@ document
   
       quarters.forEach(quarter => {
           let quarterWidth = ((shapeWidth + padding) * quarter.workingDays - padding);
-           drawRectangle(
-                quarter.quarter,
-                getColor(quarters.indexOf(quarter), "quarter"),
-                quarterWidth,
-                shapeHeight,
-                quarterX,
-                quarterY
-            ).then(rect => {
-                frame.add(rect)
-            });
-
+          drawRectangle(quarter.quarter, getColor(quarters.indexOf(quarter), "quarter"), quarterWidth, shapeHeight, quarterX, quarterY);
           quarterX += quarterWidth + padding;
       });
   }
@@ -347,20 +305,9 @@ document
     const settings = getSettings();
     const year = settings.year;
 
-    const frame = await miro.board.createFrame({
-        title: 'Awesome Calendar Thingy',
-        style: {
-          fillColor: '#ffffff',
-        },
-        x: 14000,
-        y: 0,
-        width: 28000,
-        height: 1600,
-      });
-
-    await drawMonths(year, frame, settings);
-    await drawWeeks(year, frame, settings);
-    await drawIterations(year, frame, settings);
-    await drawQuarters(year, frame, settings);
+    await drawMonths(year, settings);
+    await drawWeeks(year, settings);
+    await drawIterations(year, settings);
+    await drawQuarters(year, settings);
   }
   
