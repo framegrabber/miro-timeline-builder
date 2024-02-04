@@ -28,6 +28,10 @@ function getSettings() {
         settings[select.id] = getSelectValue(select);
     });
 
+    const viewport = miro.board.viewport.get();
+    settings.startX = viewport.x;
+    settings.startY = viewport.y;
+
     return settings;
 }
 
