@@ -15,7 +15,7 @@ dayjs.extend(isLeapYear)
 const { board } = window.miro;
 
 
-function getSettings() {
+async function getSettings() {
     const settings = {};
 
     const inputs = document.querySelectorAll("input");
@@ -28,7 +28,7 @@ function getSettings() {
         settings[select.id] = getSelectValue(select);
     });
 
-    const viewport = miro.board.viewport.get();
+    const viewport = await miro.board.viewport.get();
     settings.startX = viewport.x;
     settings.startY = viewport.y;
 
