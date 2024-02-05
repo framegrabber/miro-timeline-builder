@@ -1,32 +1,93 @@
-html,
+.footer-stack {
+  display: flex;
+  gap: 16px;
+  flex-direction: row;
+  align-items: center
+}
+
+.footer-stack .button {
+  margin: 0
+}
+
+hr {
+  margin: calc(var(--space-xsmall) * 2.5) 0
+}
+
+.select-small {
+  padding: var(--space-xsmall) 8px var(--space-xsmall) 12px;
+  font-size: var(--font-size-medium);
+  height: 36px;
+  background-position: right 2px center
+}
+
+.form-group-small {
+  margin-bottom: calc(var(--space-xxsmall) * 3)
+}
+
+.form-group-small label {
+  margin-bottom: var(--space-xxsmall)
+}
+
+select,button,input {
+  font-family: inherit
+}
+
+.button {
+  text-decoration: none
+}
+
+.button-wide {
+  width: 100%;
+  justify-content: center
+}
+
+fieldset {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  margin: 0
+}
+
+.section-title {
+  margin-bottom: 8px;
+  font-weight: var(--font-weight-bold)
+}
+
+*,*:before,*:after {
+  box-sizing: border-box
+}
+
+
+#root {
+  height: 100%
+}
+
 body {
   height: 100%;
-  margin: 0;
-  padding: 0;
+  line-height: 1.5;
+  margin: 0
+}
+
+.container {
+  max-width: 580px;
+  margin: 0 auto;
+  padding: var(--space-medium);
+  padding-top: 0
 }
 
 .scrollable-container {
   height: 100%;
-  overflow-y: auto;
-  padding-top: 30px;
-  padding-left: 23px;
-  padding-bottom: 20px;
-  box-sizing: border-box;
+  overflow-y: auto
 }
 
-label {
-	font-weight: 600;
-  padding-top: 2rem;
-}
-
-.scrollable-container .buttons {
-	position: sticky;
-	bottom: -20px;
-	padding-block: var(--space-medium);
-	background: #fff;
-}
-
-.button {
-  width: 100%;
-  text-align: center;
+.visuallyhidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px
 }
