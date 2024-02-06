@@ -309,11 +309,9 @@ document
     const settings = await getSettings();
     const year = settings.year;
 
-    await drawQuarters(year, settings);
     await drawMonths(year, settings);
-    await drawIterations(year, settings);
     await drawWeeks(year, settings);
-
-    await board.ui.closePanel();
+    await drawIterations(year, settings);
+    await drawQuarters(year, settings);
   }
   
