@@ -304,9 +304,15 @@ function getColor(number, type) {
     const settings = await getSettings();
     const year = settings.year;
 
-    await drawQuarters(year, settings);
-    await drawMonths(year, settings);
-    await drawIterations(year, settings);
-    await drawWeeks(year, settings);
+    Promise.all([
+          drawQuarters(year, settings),
+          drawMonths(year, settings),
+          drawIterations(year, settings),
+          drawWeeks(year, settings)
+      ]).finally(() => {
+            board.ui.closePanel();
+      });
+
+    
   }
   
