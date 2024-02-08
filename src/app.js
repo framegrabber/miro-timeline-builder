@@ -313,7 +313,5 @@ document
     await drawMonths(year, settings);
     await drawIterations(year, settings);
     await drawWeeks(year, settings);
-
-    await board.ui.closePanel();
   }
   
