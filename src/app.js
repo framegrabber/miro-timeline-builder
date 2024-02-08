@@ -119,25 +119,20 @@ document
       return sum;
   }
   
-  function getColor(number, type) {
-      const weekColors      = ["#8e8be1", "#7e7cc8"];
-      const dayColors       = ["#d8aa78", "#f0be86"];
-      const monthColors     = ["#8ddebd", "#9df7d2"];
-      const iterationColors = ["#d37b97", "#ea88a8"];
-      const quarterColors   = ["#82adc2", "#a0d5ef"];
-  
-      if (type === "week") {
-          return number % 2 === 0 ? weekColors[0] : weekColors[1];
-      } else if (type === "day") {
-          return number % 2 === 0 ? dayColors[0] : dayColors[1];
-      } else if (type === "month") {  
-          return number % 2 === 0 ? monthColors[0] : monthColors[1];
-      } else if (type === "iteration") {  
-          return number % 2 === 0 ? iterationColors[0] : iterationColors[1];
-      } else if (type === "quarter") {
-          return number % 2 === 0 ? quarterColors[0] : quarterColors[1];
-      }
-  }
+const colorMaps = {
+  week: ["#8e8be1", "#7e7cc8"],
+  day: ["#d8aa78", "#f0be86"], 
+  month: ["#8ddebd", "#9df7d2"],
+  iteration: ["#d37b97", "#ea88a8"],
+  quarter: ["#82adc2", "#a0d5ef"]
+};
+
+function getColor(number, type) {
+  const colors = colorMaps[type];
+
+  return number % 2 === 0 ? colors[0] : colors[1];
+}
+
   
   async function drawRectangle(content, color, width, height, x, y){
       await board.createShape({
