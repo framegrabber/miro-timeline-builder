@@ -312,7 +312,7 @@ async function drawRectangle(content, color, width, height, x, y){
           drawIterations(year, settings),
           drawWeeks(year, settings)
       ]).finally(() => {
-            const group = board.group({ items: allShapes });
+            board.group({ items: allShapes });
             board.ui.closePanel();
       });
 
