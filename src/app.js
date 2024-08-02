@@ -311,7 +311,7 @@ async function drawRectangle(content, color, width, height, x, y){
           drawMonths(year, settings),
           drawIterations(year, settings),
           drawWeeks(year, settings)
-      ]).then (console.log("All shapes:", allShapes)).finally(() => {
+      ]).then(console.log("All shapes:", allShapes)).finally(() => {
             board.ui.closePanel();
       });
 
