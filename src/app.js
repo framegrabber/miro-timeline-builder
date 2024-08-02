@@ -13,7 +13,7 @@ dayjs.extend(isoWeeksInYear)
 dayjs.extend(isLeapYear)
 
 const { board } = window.miro;
-
+let allShapes = [];
 
 async function getSettings() {
     const settings = {};
@@ -134,24 +134,26 @@ function getColor(number, type) {
 }
 
   
-  async function drawRectangle(content, color, width, height, x, y){
-      await board.createShape({
-          content: content,
-          type: "shape",
-          shape: "rectangle",
-          width: width,
-          height: height,
-          x: x + width / 2,
-          y: y + height / 2,
-          style: {
-            fillColor: color,
-            fontFamily: 'open_sans',
-            fontSize: height / 2.5,
-            borderWidth: 0,
-          },
-        })
-      };
-  
+async function drawRectangle(content, color, width, height, x, y){
+    const shape = await board.createShape({
+        content: content,
+        type: "shape",
+        shape: "rectangle",
+        width: width,
+        height: height,
+        x: x + width / 2,
+        y: y + height / 2,
+        style: {
+          fillColor: color,
+          fontFamily: 'open_sans',
+          fontSize: height / 2.5,
+          borderWidth: 0,
+        },
+    });
+
+    allShapes.push(shape);
+    return shape;
+}
 
   async function drawMonths(year, settings) {
       const {
@@ -309,7 +311,7 @@ function getColor(number, type) {
           drawMonths(year, settings),
           drawIterations(year, settings),
           drawWeeks(year, settings)
-      ]).finally(() => {
+      ]).then (console.log("All shapes:", allShapes)).finally(() => {
             board.ui.closePanel();
       });
 
