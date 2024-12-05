@@ -193,7 +193,7 @@ async function drawRectangle(content, color, width, height, x, y){
       const weeks = getWeeks(year);
   
       weeks.forEach(week => {
-          drawRectangle(week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
+          drawRectangle("calendar week " + week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
           weekX += weekWidth + padding;
           week.days.forEach(day => {
               drawRectangle(day.toString(), getColor(day, "day"), shapeWidth, shapeHeight, dayX, dayY);
