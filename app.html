@@ -20,48 +20,72 @@
 
                 <fieldset class="section">
                     <div class="h4 section-title">Quarter Settings</div>
-                    <div class="form-group form-group-small">
-                        <label for="qOneStartMonth">When does your Q1 start?</label>
-                        <select class="select select-small" id="qOneStartMonth">
-                            <option value="0">January</option>
-                            <option value="1" selected="selected">February</option>
-                            <option value="2">March</option>
-                        </select>
+                    <div class="form-group form-group-small toggle-container">
+                        <input type="checkbox" id="drawQuarters" checked>
+                        <label for="drawQuarters">Draw Quarters</label>
+                    </div>
+                    <div id="quarterSettings">
+                        <div class="form-group form-group-small">
+                            <label for="qOneStartMonth">When does your Q1 start?</label>
+                            <select class="select select-small" id="qOneStartMonth">
+                                <option value="0">January</option>
+                                <option value="1" selected="selected">February</option>
+                                <option value="2">March</option>
+                            </select>
+                        </div>
                     </div>
                 </fieldset>
                 <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
 
                 <fieldset class="section">
                     <div class="h4 section-title">Iteration Settings</div>
-                    <div class="form-group form-group-small">
-                        <label for="IterationWeekOffset">Offset in weeks for your first iteration</label>
-                        <input class="input input-small" type="text" placeholder="Offset iteration start by X weeks" value="0" type="number" id="IterationWeekOffset"/>
+                    <div class="form-group form-group-small toggle-container">
+                        <input type="checkbox" id="drawIterations" checked>
+                        <label for="drawIterations">Draw Iterations</label>
                     </div>
-                    <div class="form-group form-group-small">
-                        <label for="IterationDayOffset">On which weekday do your iterations start?</label>
-                        <select class="select select-small" id="IterationDayOffset">
-                            <option value="0">Monday</option>
-                            <option value="1">Tuesday</option>
-                            <option value="2" selected="selected">Wednesday</option>
-                            <option value="3">Thursday</option>
-                            <option value="4">Friday</option>
-                        </select>
+                    <div id="iterationSettings">
+                        <div class="form-group form-group-small">
+                            <label for="IterationWeekOffset">Offset in weeks for your first iteration</label>
+                            <input class="input input-small" type="text" placeholder="Offset iteration start by X weeks" value="0" type="number" id="IterationWeekOffset"/>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="IterationDayOffset">On which weekday do your iterations start?</label>
+                            <select class="select select-small" id="IterationDayOffset">
+                                <option value="0">Monday</option>
+                                <option value="1">Tuesday</option>
+                                <option value="2" selected="selected">Wednesday</option>
+                                <option value="3">Thursday</option>
+                                <option value="4">Friday</option>
+                            </select>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="daysPerIteration">How long are your iterations</label>
+                            <input class="input input-small" type="text" placeholder="Working days per iteration" value="10" type="number" id="daysPerIteration"/>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="IterationStartNumber">What's the number of your first iteration?</label>
+                            <input class="input input-small" type="text" placeholder="1" value="1" type="number" id="IterationStartNumber"/>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="IterationPrefix">Iteration prefix</label>
+                            <input class="input input-small" type="text" placeholder='e.g. "Sprint "' id="IterationPrefix"/>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="IterationSuffix">Iteration suffix</label>
+                            <input class="input input-small" type="text" placeholder='e.g. "/24"' id="IterationSuffix"/>
+                        </div>
                     </div>
-                    <div class="form-group form-group-small">
-                        <label for="daysPerIteration">How long are your iterations</label>
-                        <input class="input input-small" type="text" placeholder="Working days per iteration" value="10" type="number" id="daysPerIteration"/>
+                </fieldset>
+                <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
+
+                <fieldset class="section">
+                    <div class="h4 section-title">Week Settings</div>
+                    <div class="form-group form-group-small toggle-container">
+                        <input type="checkbox" id="drawWeeks" checked>
+                        <label for="drawWeeks">Draw Calendar Weeks</label>
                     </div>
-                    <div class="form-group form-group-small">
-                        <label for="IterationStartNumber">What's the number of your first iteration?</label>
-                        <input class="input input-small" type="text" placeholder="1" value="1" type="number" id="IterationStartNumber"/>
-                    </div>
-                    <div class="form-group form-group-small">
-                        <label for="IterationPrefix">Iteration prefix</label>
-                        <input class="input input-small" type="text" placeholder='e.g. "Sprint "' id="IterationPrefix"/>
-                    </div>
-                    <div class="form-group form-group-small">
-                        <label for="IterationSuffix">Iteration suffix</label>
-                        <input class="input input-small" type="text" placeholder='e.g. "/24"' id="IterationSuffix"/>
+                    <div id="weekSettings">
+                        <!-- Add any week-specific settings here if needed -->
                     </div>
                 </fieldset>
                 <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
@@ -93,4 +117,3 @@
     <script type="module" src="/src/app.js"></script>
     </body>
     </html>
-    

@@ -91,3 +91,17 @@ body {
   position: absolute;
   width: 1px
 }
+
+.toggle-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-xxsmall);
+}
+
+.toggle-container label {
+  margin-left: var(--space-xsmall);
+}
+
+.hidden {
+  display: none;
+}

@@ -28,6 +28,11 @@ async function getSettings() {
         settings[select.id] = getSelectValue(select);
     });
 
+    const toggles = document.querySelectorAll("input[type='checkbox']");
+    toggles.forEach(toggle => {
+        settings[toggle.id] = toggle.checked;
+    });
+
     const viewport = await miro.board.viewport.get();
     settings.startX = viewport.x + viewport.width/2;
     settings.startY = viewport.y + viewport.height/2;
@@ -50,7 +55,17 @@ document
   .getElementById("submit")
   .addEventListener("click", () => drawCalendar());
 
+document.getElementById("drawQuarters").addEventListener("change", (event) => {
+    document.getElementById("quarterSettings").classList.toggle("hidden", !event.target.checked);
+});
 
+document.getElementById("drawIterations").addEventListener("change", (event) => {
+    document.getElementById("iterationSettings").classList.toggle("hidden", !event.target.checked);
+});
+
+document.getElementById("drawWeeks").addEventListener("change", (event) => {
+    document.getElementById("weekSettings").classList.toggle("hidden", !event.target.checked);
+});
 
 // function that returns the number of 
   // weeks for a given year
@@ -306,16 +321,23 @@ async function drawRectangle(content, color, width, height, x, y){
     const settings = await getSettings();
     const year = settings.year;
 
-    Promise.all([
-          drawQuarters(year, settings),
-          drawMonths(year, settings),
-          drawIterations(year, settings),
-          drawWeeks(year, settings)
-      ]).finally(() => {
-            board.group({ items: allShapes });
-            board.ui.closePanel();
-      });
+    const drawPromises = [
+        drawMonths(year, settings) // Always draw months
+    ];
 
-    
+    if (settings.drawQuarters) {
+        drawPromises.push(drawQuarters(year, settings));
+    }
+    if (settings.drawIterations) {
+        drawPromises.push(drawIterations(year, settings));
+    }
+    if (settings.drawWeeks) {
+        drawPromises.push(drawWeeks(year, settings));
+    }
+
+    Promise.all(drawPromises).finally(() => {
+        board.group({ items: allShapes });
+        board.ui.closePanel();
+    });
   }
-  
+
