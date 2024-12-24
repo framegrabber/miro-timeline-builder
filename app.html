@@ -16,17 +16,16 @@
                             <input class="input" type="text" placeholder="enter the year" value="2024" type="number" id="year"/>
                         </div>
                 </fieldset>
-                <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
+                <hr style="margin-top: calc(var(--space-xsmall) * 2);">
 
                 <fieldset class="section">
-                    <div class="h4 section-title">Quarter Settings</div>
                     <div class="form-group form-group-small toggle-container">
-                        <label class="toggle">
-                            <span>Draw Quarters</span>
-                            <input type="checkbox" id="drawQuarters" checked tabindex="0"/>
-                        </label>
-                    </div>
-                    <div id="quarterSettings">
+                    <label class="toggle">
+                        <input type="checkbox" id="drawQuarters" tabindex="0"/>
+                        <span>Draw Quarters</span>
+                    </label>
+                </div>
+                    <div id="quarterSettings" class="hidden">
                         <div class="form-group form-group-small">
                             <label for="qOneStartMonth">When does your Q1 start?</label>
                             <select class="select select-small" id="qOneStartMonth">
@@ -40,14 +39,13 @@
                 <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
 
                 <fieldset class="section">
-                    <div class="h4 section-title">Iteration Settings</div>
                     <div class="form-group form-group-small toggle-container">
                         <label class="toggle">
+                            <input type="checkbox" id="drawIterations"  tabindex="0"/>
                             <span>Draw Iterations</span>
-                            <input type="checkbox" id="drawIterations" checked tabindex="0"/>
                         </label>
                     </div>
-                    <div id="iterationSettings">
+                    <div id="iterationSettings" class="hidden">
                         <div class="form-group form-group-small">
                             <label for="IterationWeekOffset">Offset in weeks for your first iteration</label>
                             <input class="input input-small" type="text" placeholder="Offset iteration start by X weeks" value="0" type="number" id="IterationWeekOffset"/>
@@ -83,14 +81,13 @@
                 <hr style="margin-top: calc(var(--space-xsmall) * 1.5);">
 
                 <fieldset class="section">
-                    <div class="h4 section-title">Week Settings</div>
                     <div class="form-group form-group-small toggle-container">
                         <label class="toggle">
+                            <input type="checkbox" id="drawWeeks"  tabindex="0"/>
                             <span>Draw Calendar Weeks</span>
-                            <input type="checkbox" id="drawWeeks" checked tabindex="0"/>
                         </label>
                     </div>
-                    <div id="weekSettings">
+                    <div id="weekSettings" class="hidden">
                         <!-- Add any week-specific settings here if needed -->
                     </div>
                 </fieldset>
