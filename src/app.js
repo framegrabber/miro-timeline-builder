@@ -161,28 +161,27 @@ async function drawRectangle(content, color, width, height, x, y){
     return shape;
 }
 
-  async function drawMonths(year, settings) {
-      const {
-          shapeWidth,
-          shapeHeight,
-          padding
-          } = settings;
-      
-          let monthX = settings.startX;
-          let monthY = settings.startY - 2 * (shapeHeight + padding);
-  
-      const months = getWorkingDaysPerMonth(year);
-      
-      months.forEach(month => {
-          let monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
-          drawRectangle(month.month, getColor(months.indexOf(month), "month"), monthWidth, shapeHeight, monthX, monthY);
-          monthX += monthWidth + padding;
-      });
-  
-  }
-  
-  //function to draw the weeks of the year
-  async function drawWeeks(year, settings) {
+async function drawMonths(year, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+    } = settings;
+    
+    let monthX = settings.startX;
+    let monthY = calculateYPosition(settings, 'drawMonths');
+
+    const months = getWorkingDaysPerMonth(year);
+    
+    months.forEach(month => {
+        let monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
+        drawRectangle(month.month, getColor(months.indexOf(month), "month"), monthWidth, shapeHeight, monthX, monthY);
+        monthX += monthWidth + padding;
+    });
+}
+
+//function to draw the weeks of the year
+async function drawWeeks(year, settings) {
     const {
         shapeWidth,
         shapeHeight,
@@ -191,7 +190,7 @@ async function drawRectangle(content, color, width, height, x, y){
     } = settings;
 
     let weekX = settings.startX;
-    let weekY = settings.startY;
+    let weekY = calculateYPosition(settings, 'drawWeeks');
 
     // Get first day of the year and its week properties
     const firstDay = dayjs(`${year}-01-01`);
@@ -215,104 +214,104 @@ async function drawRectangle(content, color, width, height, x, y){
     }
 }
   
-  async function drawIterations(year, settings) {
-      const {
-          shapeWidth,
-          shapeHeight,
-          padding,
-          IterationWeekOffset,
-          IterationDayOffset,
-          daysPerIteration,
-          IterationStartNumber,
-          IterationPrefix,
-          IterationSuffix
-        } = settings;
-  
-      let iterationX = settings.startX + (IterationWeekOffset * 5 + IterationDayOffset) * (shapeWidth + padding);
-      let iterationY = settings.startY - shapeHeight - padding;
-  
-      const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - IterationWeekOffset * 5 - IterationDayOffset) / daysPerIteration);
-  
-      const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
-  
-      for (let iteration = 0; iteration < numberOfIterations; iteration++) {
-          drawRectangle(IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
-                        getColor(iteration, "iteration"),
-                        iterationWidth, shapeHeight,
-                        iterationX, iterationY);
-          iterationX += iterationWidth + padding;
-      }
-  
-  }
-  
-  async function drawQuarters(year, settings) {
-      const {
-          shapeWidth,
-          shapeHeight,
-          padding,
-          qOneStartMonth
+async function drawIterations(year, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding,
+        IterationWeekOffset,
+        IterationDayOffset,
+        daysPerIteration,
+        IterationStartNumber,
+        IterationPrefix,
+        IterationSuffix
       } = settings;
-  
-      let quarterX = settings.startX;
-      let quarterY = settings.startY - 3 * (shapeHeight + padding);
-  
-      const quarters = getWorkingDaysPerQuarter(year, qOneStartMonth);
-  
-      quarters.forEach(quarter => {
-          let quarterWidth = ((shapeWidth + padding) * quarter.workingDays - padding);
-          drawRectangle(quarter.quarter, getColor(quarters.indexOf(quarter), "quarter"), quarterWidth, shapeHeight, quarterX, quarterY);
-          quarterX += quarterWidth + padding;
-      });
-  }
-  
-  function getWorkingDaysBetweenMonths(year, startMonth, endMonth) {
-  
-    const months = getWorkingDaysPerMonth(year);
-  
-    return months.reduce((total, month, index) => {
-      if(index >= startMonth && index < endMonth){
-        return total + month.workingDays;
-      }
-      return total;
-    }, 0);
-  
-  }
-  
-  
-  function getWorkingDaysPerQuarter(year, qOneStartMonth) {
-      const quarters = [];
-      
-      const startMonths = [];
-      startMonths.push(qOneStartMonth);
-  
-      for (let q = 1; q <= 3; q++) {
-          startMonths.push( q * 3 + qOneStartMonth );
-      }
-  
-      const months = getWorkingDaysPerMonth(year);
-  
-      if (qOneStartMonth > 0) {
-          quarters.push({
-            quarter: "Q4/" + (year - 1).toString(),  
-            workingDays: getWorkingDaysBetweenMonths(year, 0, qOneStartMonth)
-          });
-        };
-      
-      startMonths.forEach((startMonthOfCurrentQuarter, indexOfCurrentStartMonth) => {
-          let startMonthOfNextQuarter = indexOfCurrentStartMonth + 1 < startMonths.length 
-              ? startMonths[indexOfCurrentStartMonth + 1]
-              : 12;
+
+    let iterationX = settings.startX + (IterationWeekOffset * 5 + IterationDayOffset) * (shapeWidth + padding);
+    let iterationY = calculateYPosition(settings, 'drawIterations');
+
+    const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - IterationWeekOffset * 5 - IterationDayOffset) / daysPerIteration);
+
+    const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
+
+    for (let iteration = 0; iteration < numberOfIterations; iteration++) {
+        drawRectangle(IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
+                      getColor(iteration, "iteration"),
+                      iterationWidth, shapeHeight,
+                      iterationX, iterationY);
+        iterationX += iterationWidth + padding;
+    }
+
+}
+
+async function drawQuarters(year, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding,
+        qOneStartMonth
+    } = settings;
+
+    let quarterX = settings.startX;
+    let quarterY = calculateYPosition(settings, 'drawQuarters');
+
+    const quarters = getWorkingDaysPerQuarter(year, qOneStartMonth);
+
+    quarters.forEach(quarter => {
+        let quarterWidth = ((shapeWidth + padding) * quarter.workingDays - padding);
+        drawRectangle(quarter.quarter, getColor(quarters.indexOf(quarter), "quarter"), quarterWidth, shapeHeight, quarterX, quarterY);
+        quarterX += quarterWidth + padding;
+    });
+}
+
+function getWorkingDaysBetweenMonths(year, startMonth, endMonth) {
+
+  const months = getWorkingDaysPerMonth(year);
+
+  return months.reduce((total, month, index) => {
+    if(index >= startMonth && index < endMonth){
+      return total + month.workingDays;
+    }
+    return total;
+  }, 0);
+
+}
+
+
+function getWorkingDaysPerQuarter(year, qOneStartMonth) {
+    const quarters = [];
     
-          quarters.push({
-              quarter: "Q" + (startMonths.indexOf(startMonthOfCurrentQuarter) + 1).toString() + "/" + year.toString(),
-              workingDays: getWorkingDaysBetweenMonths(year, startMonthOfCurrentQuarter, startMonthOfNextQuarter) 
-          });
-      });
+    const startMonths = [];
+    startMonths.push(qOneStartMonth);
+
+    for (let q = 1; q <= 3; q++) {
+        startMonths.push( q * 3 + qOneStartMonth );
+    }
+
+    const months = getWorkingDaysPerMonth(year);
+
+    if (qOneStartMonth > 0) {
+        quarters.push({
+          quarter: "Q4/" + (year - 1).toString(),  
+          workingDays: getWorkingDaysBetweenMonths(year, 0, qOneStartMonth)
+        });
+      };
+    
+    startMonths.forEach((startMonthOfCurrentQuarter, indexOfCurrentStartMonth) => {
+        let startMonthOfNextQuarter = indexOfCurrentStartMonth + 1 < startMonths.length 
+            ? startMonths[indexOfCurrentStartMonth + 1]
+            : 12;
   
-      return quarters;
-  
-  
-  }
+        quarters.push({
+            quarter: "Q" + (startMonths.indexOf(startMonthOfCurrentQuarter) + 1).toString() + "/" + year.toString(),
+            workingDays: getWorkingDaysBetweenMonths(year, startMonthOfCurrentQuarter, startMonthOfNextQuarter) 
+        });
+    });
+
+    return quarters;
+
+
+}
 
 async function drawDays(year, settings) {
     const {
@@ -322,7 +321,7 @@ async function drawDays(year, settings) {
     } = settings;
 
     let dayX = settings.startX;
-    let dayY = settings.startY + shapeHeight + padding;
+    let dayY = calculateYPosition(settings, 'drawDays');
 
     const startDate = dayjs(`${year}-01-01`);
     const endDate = dayjs(`${year}-12-31`);
@@ -360,5 +359,32 @@ async function drawCalendar() {
         board.group({ items: allShapes });
         board.ui.closePanel();
     });
+}
+
+function calculateYPosition(settings, position) {
+    const { shapeHeight, padding } = settings;
+    const elementHeight = shapeHeight + padding;
+    let yOffset = settings.startY;
+    
+    // Define draw order from top to bottom
+    const elements = [
+        { id: 'drawQuarters', active: settings.drawQuarters },
+        { id: 'drawMonths', active: true },      // months always drawn
+        { id: 'drawIterations', active: settings.drawIterations },
+        { id: 'drawWeeks', active: settings.drawWeeks },
+        { id: 'drawDays', active: true }         // days always drawn
+    ];
+    
+    // Count active elements up to the requested position
+    let activeCount = 0;
+    for (let i = 0; i < elements.length; i++) {
+        if (elements[i].active) {
+            if (elements[i].id === position) {
+                return yOffset + (activeCount * elementHeight);
+            }
+            activeCount++;
+        }
+    }
+    return yOffset;
 }
 
