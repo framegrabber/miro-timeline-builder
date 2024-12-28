@@ -86,16 +86,7 @@ document.getElementById("drawWeeks").addEventListener("change", (event) => {
   
   
   
-  // function that iterates over all weeks of a given 
-  // year and returns an array of objects
-  // that show the weeknumber and the dates of the week days
-  function getWeeks(year) {
-      const weeks = [];
-      for (let week = 1; week <= getWeeksInYear(year); week++) {
-          weeks.push({ weekNumber: week, days: getWorkingDayDatesPerWeek(week, year) });
-      }
-      return weeks;
-  }
+
   
   // function that calculates the number of working days per month for a given year
   // using dayjs.isoWeekday and returns an array of objects
@@ -200,21 +191,24 @@ async function drawRectangle(content, color, width, height, x, y){
   
       let weekX = settings.startX;
       let weekY = settings.startY;
-      let dayX  = settings.startX;
-      let dayY  = settings.startY + shapeHeight + padding;
   
-      const weekWidth = shapeWidth * 5 + 4 * padding;
+      const startDate = dayjs(`${year}-01-01`);
+      const endDate = dayjs(`${year}-12-31`);
+      let currentDate = startDate;
   
-      const weeks = getWeeks(year);
+      // Adjust the initial weekX position based on the weekday of January 1st
+      const initialWeekday = startDate.isoWeekday();
+      weekX -= (initialWeekday - 1) * (shapeWidth + padding);
   
-      weeks.forEach(week => {
-          drawRectangle("calendar week " + week.weekNumber.toString(), getColor(week.weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
-          weekX += weekWidth + padding;
-          week.days.forEach(day => {
-              drawRectangle(day.toString(), getColor(day, "day"), shapeWidth, shapeHeight, dayX, dayY);
-              dayX += shapeWidth + padding;
-          });
-      });
+      while (currentDate.isBefore(endDate) || currentDate.isSame(endDate)) {
+          if (currentDate.isoWeekday() === 1) { // Only draw on Mondays
+              const weekNumber = currentDate.isoWeekYear() === year ? currentDate.isoWeek() : 1;
+              const weekWidth = shapeWidth * 5 + 4 * padding;
+              drawRectangle("calendar week " + weekNumber.toString(), getColor(weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
+              weekX += weekWidth + padding;
+          }
+          currentDate = currentDate.add(1, 'day');
+      }
   
   }
   
@@ -317,12 +311,36 @@ async function drawRectangle(content, color, width, height, x, y){
   
   }
 
-  async function drawCalendar() {
+async function drawDays(year, settings) {
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding
+    } = settings;
+
+    let dayX = settings.startX;
+    let dayY = settings.startY + shapeHeight + padding;
+
+    const startDate = dayjs(`${year}-01-01`);
+    const endDate = dayjs(`${year}-12-31`);
+    let currentDate = startDate;
+
+    while (currentDate.isBefore(endDate) || currentDate.isSame(endDate)) {
+        if (currentDate.isoWeekday() <= 5) { // Only draw weekdays
+            drawRectangle(currentDate.format('DD'), getColor(currentDate.date(), "day"), shapeWidth, shapeHeight, dayX, dayY);
+            dayX += shapeWidth + padding;
+        }
+        currentDate = currentDate.add(1, 'day');
+    }
+}
+
+async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
     const drawPromises = [
-        drawMonths(year, settings) // Always draw months
+        drawMonths(year, settings), // Always draw months
+        drawDays(year, settings) // Always draw days
     ];
 
     if (settings.drawQuarters) {
@@ -339,5 +357,5 @@ async function drawRectangle(content, color, width, height, x, y){
         board.group({ items: allShapes });
         board.ui.closePanel();
     });
-  }
+}
 
