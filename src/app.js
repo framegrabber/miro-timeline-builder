@@ -181,36 +181,39 @@ async function drawRectangle(content, color, width, height, x, y){
   
   }
   
-  //function to draw the weeks and days
+  //function to draw the weeks of the year
   async function drawWeeks(year, settings) {
-      const {
-          shapeWidth,
-          shapeHeight,
-          padding
-          } = settings;
-  
-      let weekX = settings.startX;
-      let weekY = settings.startY;
-  
-      const startDate = dayjs(`${year}-01-01`);
-      const endDate = dayjs(`${year}-12-31`);
-      let currentDate = startDate;
-  
-      // Adjust the initial weekX position based on the weekday of January 1st
-      const initialWeekday = startDate.isoWeekday();
-      weekX -= (initialWeekday - 1) * (shapeWidth + padding);
-  
-      while (currentDate.isBefore(endDate) || currentDate.isSame(endDate)) {
-          if (currentDate.isoWeekday() === 1) { // Only draw on Mondays
-              const weekNumber = currentDate.isoWeekYear() === year ? currentDate.isoWeek() : 1;
-              const weekWidth = shapeWidth * 5 + 4 * padding;
-              drawRectangle("calendar week " + weekNumber.toString(), getColor(weekNumber, "week"), weekWidth, shapeHeight, weekX, weekY);
-              weekX += weekWidth + padding;
-          }
-          currentDate = currentDate.add(1, 'day');
-      }
-  
-  }
+    const {
+        shapeWidth,
+        shapeHeight,
+        padding,
+        weekPrefix
+    } = settings;
+
+    let weekX = settings.startX;
+    let weekY = settings.startY;
+
+    // Get first day of the year and its week properties
+    const firstDay = dayjs(`${year}-01-01`);
+    const firstWeek = firstDay.isoWeek();
+    const lastDay = dayjs(`${year}-12-31`);
+    const lastWeek = lastDay.isoWeek();
+
+    // Adjust starting position based on what weekday Jan 1st is
+    const initialOffset = (firstDay.isoWeekday() - 1) * (shapeWidth + padding);
+    weekX -= initialOffset;
+
+    // Handle year boundary cases
+    const startWeek = (firstWeek === 1) ? 1 : firstWeek;
+    const endWeek = (lastWeek === 1) ? 52 : lastWeek;
+
+    for (let week = startWeek; week <= endWeek; week++) {
+        const weekWidth = shapeWidth * 5 + 4 * padding;
+        const weekLabel = weekPrefix ? `${weekPrefix} ${week}` : `${week}`;
+        drawRectangle(weekLabel, getColor(week, "week"), weekWidth, shapeHeight, weekX, weekY);
+        weekX += weekWidth + padding;
+    }
+}
   
   async function drawIterations(year, settings) {
       const {
