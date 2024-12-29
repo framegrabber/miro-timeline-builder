@@ -13,6 +13,19 @@ dayjs.extend(isoWeeksInYear)
 dayjs.extend(isLeapYear)
 
 const { board } = window.miro;
+
+// Initialize year input with current year
+document.addEventListener('DOMContentLoaded', () => {
+    const yearInput = document.getElementById('year');
+    yearInput.value = new Date().getFullYear();
+    
+    // Add validation for year input
+    yearInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/[^\d]/g, '').slice(0, 4);
+        validateYear(e.target);
+    });
+});
+
 let allShapes = [];
 
 async function getSettings() {
@@ -53,7 +66,14 @@ function getSelectValue(select) {
 
 document
   .getElementById("submit")
-  .addEventListener("click", () => drawCalendar());
+  .addEventListener("click", (event) => {
+    const yearInput = document.getElementById('year');
+    if (!validateYear(yearInput)) {
+        event.preventDefault();
+        return;
+    }
+    drawCalendar();
+});
 
 document.getElementById("drawQuarters").addEventListener("change", (event) => {
     document.getElementById("quarterSettings").classList.toggle("hidden", !event.target.checked);
@@ -386,5 +406,20 @@ function calculateYPosition(settings, position) {
         }
     }
     return yOffset;
+}
+
+function validateYear(yearInput) {
+    const year = yearInput.value;
+    const yearGroup = yearInput.closest('.form-group');
+    const isValid = /^\d{4}$/.test(year);
+    
+    yearGroup.classList.toggle('error', !isValid);
+    yearGroup.querySelector('.status-text').style.display = isValid ? 'none' : 'block';
+    
+    if (!isValid) {
+        yearInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    
+    return isValid;
 }
 
