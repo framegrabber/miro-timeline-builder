@@ -87,26 +87,6 @@ document.getElementById("drawWeeks").addEventListener("change", (event) => {
     document.getElementById("weekSettings").classList.toggle("hidden", !event.target.checked);
 });
 
-// function that returns the number of 
-  // weeks for a given year
-  function getWeeksInYear(year) {
-      return dayjs(year, 'YYYY').isoWeeksInYear();
-  }
-  
-  // function that accepts a week and a year
-  // and returns an array of the dates of month
-  function getWorkingDayDatesPerWeek(week, year) {
-      const weekDays = [];
-      for (let day = 1; day <= 5; day++) {
-          const date = dayjs().year(year).isoWeek(week).isoWeekday(day);
-          weekDays.push(date.format('DD'));
-      }
-      return weekDays;
-  }
-  
-  
-  
-
   
   // function that calculates the number of working days per month for a given year
   // using dayjs.isoWeekday and returns an array of objects
