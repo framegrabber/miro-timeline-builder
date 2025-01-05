@@ -131,17 +131,21 @@ Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
   
 const colorMaps = {
   week: ["#8e8be1", "#7e7cc8"],
-  day: ["#d8aa78", "#f0be86"], 
+  day: ["#FFE5CC", "#FFD1A3", "#FFBD7A", "#FFA952", "#FF9529"], // Mon-Fri orange gradient
   month: ["#8ddebd", "#9df7d2"],
   iteration: ["#d37b97", "#ea88a8"],
   quarter: ["#82adc2", "#a0d5ef"]
 };
-
 function getColor(number, type) {
-  const colors = colorMaps[type];
-
-  return number % 2 === 0 ? colors[0] : colors[1];
-}
+    const colors = colorMaps[type];
+    
+    if (type === "day") {
+      // Use weekday (1-5) directly as color index
+      // Subtract 1 since array is 0-based but weekdays are 1-based
+      return colors[number - 1];
+    }
+    return number % 2 === 0 ? colors[0] : colors[1];
+  }
 
   
 async function drawRectangle(content, color, width, height, x, y){
@@ -313,9 +317,9 @@ function getWorkingDaysPerQuarter(year, qOneStartMonth) {
     });
 
     return quarters;
-
-
 }
+
+
 
 async function drawDays(year, settings) {
     const {
@@ -332,15 +336,21 @@ async function drawDays(year, settings) {
     let currentDate = startDate;
 
     while (currentDate.isBefore(endDate) || currentDate.isSame(endDate)) {
-        if (currentDate.isoWeekday() <= 5) { // Only draw weekdays
-            drawRectangle(currentDate.format('DD'), getColor(currentDate.date(), "day"), shapeWidth, shapeHeight, dayX, dayY);
+        const weekday = currentDate.isoWeekday();
+        if (weekday <= 5) {
+            drawRectangle(
+                currentDate.format('DD'), 
+                getColor(weekday, "day"),  // Pass weekday instead of date
+                shapeWidth, 
+                shapeHeight, 
+                dayX, 
+                dayY
+            );
             dayX += shapeWidth + padding;
         }
         currentDate = currentDate.add(1, 'day');
     }
-}
-
-async function drawCalendar() {
+}async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
