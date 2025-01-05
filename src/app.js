@@ -111,26 +111,31 @@ document.getElementById("drawWeeks").addEventListener("change", (event) => {
   // function that calculates the number of working days per month for a given year
   // using dayjs.isoWeekday and returns an array of objects
   // that show the month and the number of working days
+  const memoizedWorkingDays = new Map();
   function getWorkingDaysPerMonth(year) {
+      const key = `${year}`;
+      if (memoizedWorkingDays.has(key)) {
+          return memoizedWorkingDays.get(key);
+      }
       const months = [];
       
       for (let m = 0; m <= 11; m++) {
           let workingDays = 0;
-      
+    
           const month = dayjs().set('year',year).month(m);
           const totalDays = month.daysInMonth();
-  
+
           for (let day = 1; day <= totalDays; day++) {
               if (month.date(day).isoWeekday() <= 5) {
                   workingDays++;
               }
           }
-         
+       
           months.push({ month: month.format('MMMM'), workingDays });
       }
+      memoizedWorkingDays.set(key, months);
       return months;
-  }
-  
+  }  
   
   // function that sums up all working days per year and returns the sum
   // takes the output of getWorkingDaysPerMonth as input
