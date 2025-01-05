@@ -75,18 +75,17 @@ document
     drawCalendar();
 });
 
-document.getElementById("drawQuarters").addEventListener("change", (event) => {
-    document.getElementById("quarterSettings").classList.toggle("hidden", !event.target.checked);
-});
+const settingsMap = {
+    'drawQuarters': 'quarterSettings',
+    'drawIterations': 'iterationSettings',
+    'drawWeeks': 'weekSettings'
+};
 
-document.getElementById("drawIterations").addEventListener("change", (event) => {
-    document.getElementById("iterationSettings").classList.toggle("hidden", !event.target.checked);
+Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
+    document.getElementById(triggerId).addEventListener('change', (event) => {
+        document.getElementById(targetId).classList.toggle('hidden', !event.target.checked);
+    });
 });
-
-document.getElementById("drawWeeks").addEventListener("change", (event) => {
-    document.getElementById("weekSettings").classList.toggle("hidden", !event.target.checked);
-});
-
   
   // function that calculates the number of working days per month for a given year
   // using dayjs.isoWeekday and returns an array of objects
