@@ -235,7 +235,14 @@ async function drawIterations(year, settings) {
         IterationSuffix
       } = settings;
 
-    let iterationX = settings.startX + (IterationWeekOffset * 5 + IterationDayOffset) * (shapeWidth + padding);
+    const firstDayOfYear = dayjs(`${year}-01-01`).isoWeekday(); // 1-5 (Mon-Fri)
+    const desiredStartDay = IterationDayOffset + 1; // Convert 0-based to 1-5 (Mon-Fri)
+    
+    // Calculate initial offset, allowing for negative values to start in previous year
+    let dayOffset = (desiredStartDay - firstDayOfYear);
+    
+    let iterationX = settings.startX + 
+        (IterationWeekOffset * 5 + dayOffset) * (shapeWidth + padding);
     let iterationY = calculateYPosition(settings, 'drawIterations');
 
     const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - IterationWeekOffset * 5 - IterationDayOffset) / daysPerIteration);
@@ -251,7 +258,6 @@ async function drawIterations(year, settings) {
     }
 
 }
-
 async function drawQuarters(year, settings) {
     const {
         shapeWidth,
