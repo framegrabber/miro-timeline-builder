@@ -2,10 +2,12 @@
   "name": "timeline-builder",
   "version": "0.1.0",
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "start": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "dayjs": "^1.11.10",

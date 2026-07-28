@@ -1,0 +1,220 @@
+import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek.js';
+
+dayjs.extend(isoWeek);
+
+/**
+ * The calendar is a grid of working-day columns.
+ *
+ *   column 0 = the first working day of the year
+ *   one column per Mon-Fri, weekends have no column at all
+ *
+ * Every row (days, months, weeks, iterations, quarters) must derive its
+ * position from `columnOf`. Rows that do their own arithmetic drift apart from
+ * each other whenever Jan 1st is not a Monday - that is the bug this module
+ * exists to prevent. Nothing here knows about pixels or Miro; `app.js` turns
+ * columns into coordinates in exactly one place.
+ */
+
+const WORKING_DAYS_PER_WEEK = 5;
+
+export function isWorkingDay(date) {
+    return date.isoWeekday() <= WORKING_DAYS_PER_WEEK;
+}
+
+/** The date that owns column 0. Skips forward when Jan 1st is a weekend. */
+export function firstWorkingDayOf(year) {
+    let date = dayjs(`${year}-01-01`);
+    while (!isWorkingDay(date)) {
+        date = date.add(1, 'day');
+    }
+    return date;
+}
+
+export function lastWorkingDayOf(year) {
+    let date = dayjs(`${year}-12-31`);
+    while (!isWorkingDay(date)) {
+        date = date.subtract(1, 'day');
+    }
+    return date;
+}
+
+/**
+ * Grid column of a date, as a signed count of working days from column 0.
+ * Negative for dates before the year starts, which is how a week block whose
+ * Monday sits in the previous year hangs off the left edge.
+ */
+export function columnOf(year, date) {
+    const first = firstWorkingDayOf(year);
+    let column = 0;
+
+    if (date.isBefore(first)) {
+        for (let d = date; d.isBefore(first); d = d.add(1, 'day')) {
+            if (isWorkingDay(d)) column--;
+        }
+        return column;
+    }
+
+    for (let d = first; d.isBefore(date); d = d.add(1, 'day')) {
+        if (isWorkingDay(d)) column++;
+    }
+    return column;
+}
+
+const workingDaysCache = new Map();
+
+/** Working days per calendar month, in month order. */
+export function workingDaysPerMonth(year) {
+    const cached = workingDaysCache.get(year);
+    if (cached) return cached;
+
+    const months = [];
+    for (let m = 0; m <= 11; m++) {
+        const month = dayjs(`${year}-01-01`).month(m);
+        let workingDays = 0;
+        for (let day = 1; day <= month.daysInMonth(); day++) {
+            if (isWorkingDay(month.date(day))) workingDays++;
+        }
+        months.push({ month: month.format('MMMM'), workingDays });
+    }
+
+    workingDaysCache.set(year, months);
+    return months;
+}
+
+/** Total number of columns in the grid. */
+export function totalWorkingDays(year) {
+    return workingDaysPerMonth(year).reduce((sum, month) => sum + month.workingDays, 0);
+}
+
+function workingDaysBetweenMonths(year, startMonth, endMonth) {
+    return workingDaysPerMonth(year).reduce(
+        (total, month, index) =>
+            index >= startMonth && index < endMonth ? total + month.workingDays : total,
+        0
+    );
+}
+
+// --- rows --------------------------------------------------------------------
+// Each builder returns blocks in column space: { colStart, colSpan, ... }.
+
+export function dayBlocks(year) {
+    const blocks = [];
+    const end = lastWorkingDayOf(year);
+    let column = 0;
+
+    for (let d = firstWorkingDayOf(year); !d.isAfter(end); d = d.add(1, 'day')) {
+        if (!isWorkingDay(d)) continue;
+        blocks.push({
+            label: d.format('DD'),
+            weekday: d.isoWeekday(),
+            colStart: column,
+            colSpan: 1,
+        });
+        column++;
+    }
+    return blocks;
+}
+
+export function monthBlocks(year) {
+    let colStart = 0;
+    return workingDaysPerMonth(year).map((month, index) => {
+        const block = {
+            label: month.month,
+            index,
+            colStart,
+            colSpan: month.workingDays,
+        };
+        colStart += month.workingDays;
+        return block;
+    });
+}
+
+/**
+ * One block per ISO week containing at least one working day of the year,
+ * anchored on that week's Monday.
+ *
+ * Keyed by Monday rather than by week number on purpose: a year can both start
+ * and end in an ISO week numbered 1, so week numbers are not unique within a
+ * year and cannot drive the loop.
+ */
+export function weekBlocks(year) {
+    const first = firstWorkingDayOf(year);
+    const last = lastWorkingDayOf(year);
+    const blocks = [];
+
+    let monday = first.subtract(first.isoWeekday() - 1, 'day');
+    while (!monday.isAfter(last)) {
+        blocks.push({
+            week: monday.isoWeek(),
+            colStart: columnOf(year, monday),
+            colSpan: WORKING_DAYS_PER_WEEK,
+        });
+        monday = monday.add(7, 'day');
+    }
+    return blocks;
+}
+
+/**
+ * Iterations start on the first `weekdayIndex` (0 = Monday .. 4 = Friday) on or
+ * after the first working day of the year, shifted by `weekOffset` whole weeks,
+ * and run in fixed-length chunks to the end of the year.
+ */
+export function iterationBlocks(year, { weekdayIndex, weekOffset, daysPerIteration, startNumber }) {
+    let start = firstWorkingDayOf(year);
+    while (start.isoWeekday() !== weekdayIndex + 1) {
+        start = start.add(1, 'day');
+    }
+
+    const firstColumn = columnOf(year, start) + weekOffset * WORKING_DAYS_PER_WEEK;
+    const columns = totalWorkingDays(year);
+    const count = Math.max(0, Math.ceil((columns - firstColumn) / daysPerIteration));
+
+    return Array.from({ length: count }, (_, i) => ({
+        number: startNumber + i,
+        colStart: firstColumn + i * daysPerIteration,
+        colSpan: daysPerIteration,
+    }));
+}
+
+// --- columns -> pixels -------------------------------------------------------
+// The single place where a grid column becomes a coordinate. Every row uses
+// these, so no row can invent its own offset again.
+
+export function xOfColumn({ startX, shapeWidth, padding }, colStart) {
+    return startX + colStart * (shapeWidth + padding);
+}
+
+export function widthOfColumns({ shapeWidth, padding }, colSpan) {
+    return shapeWidth * colSpan + (colSpan - 1) * padding;
+}
+
+export function quarterBlocks(year, qOneStartMonth) {
+    const startMonths = [qOneStartMonth];
+    for (let q = 1; q <= 3; q++) {
+        startMonths.push(q * 3 + qOneStartMonth);
+    }
+
+    const quarters = [];
+    if (qOneStartMonth > 0) {
+        quarters.push({
+            label: `Q4/${year - 1}`,
+            workingDays: workingDaysBetweenMonths(year, 0, qOneStartMonth),
+        });
+    }
+
+    startMonths.forEach((startMonth, index) => {
+        const nextStartMonth = index + 1 < startMonths.length ? startMonths[index + 1] : 12;
+        quarters.push({
+            label: `Q${index + 1}/${year}`,
+            workingDays: workingDaysBetweenMonths(year, startMonth, nextStartMonth),
+        });
+    });
+
+    let colStart = 0;
+    return quarters.map((quarter, index) => {
+        const block = { label: quarter.label, index, colStart, colSpan: quarter.workingDays };
+        colStart += quarter.workingDays;
+        return block;
+    });
+}

@@ -1,16 +1,14 @@
 import './assets/style.css'
 
-import dayjs, { Dayjs } from 'dayjs';
-
-import isoWeeksInYear from 'dayjs/plugin/isoWeeksInYear'
-import isLeapYear from 'dayjs/plugin/isLeapYear'
-import isoWeek from 'dayjs/plugin/isoWeek'
-import weekday from 'dayjs/plugin/weekday'
-
-dayjs.extend(weekday)
-dayjs.extend(isoWeek)
-dayjs.extend(isoWeeksInYear)
-dayjs.extend(isLeapYear)
+import {
+    dayBlocks,
+    monthBlocks,
+    weekBlocks,
+    iterationBlocks,
+    quarterBlocks,
+    xOfColumn,
+    widthOfColumns,
+} from './calendar.js';
 
 const { board } = window.miro;
 
@@ -87,48 +85,23 @@ Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
     });
 });
   
-  // function that calculates the number of working days per month for a given year
-  // using dayjs.isoWeekday and returns an array of objects
-  // that show the month and the number of working days
-  const memoizedWorkingDays = new Map();
-  function getWorkingDaysPerMonth(year) {
-      const key = `${year}`;
-      if (memoizedWorkingDays.has(key)) {
-          return memoizedWorkingDays.get(key);
-      }
-      const months = [];
-      
-      for (let m = 0; m <= 11; m++) {
-          let workingDays = 0;
-    
-          const month = dayjs().set('year',year).month(m);
-          const totalDays = month.daysInMonth();
+// Draws one row of the calendar from blocks produced by calendar.js.
+// All geometry lives in calendar.js - this only turns blocks into Miro shapes.
+function drawRow(settings, position, blocks, label, color) {
+    const y = calculateYPosition(settings, position);
 
-          for (let day = 1; day <= totalDays; day++) {
-              if (month.date(day).isoWeekday() <= 5) {
-                  workingDays++;
-              }
-          }
-       
-          months.push({ month: month.format('MMMM'), workingDays });
-      }
-      memoizedWorkingDays.set(key, months);
-      return months;
-  }  
-  
-  // function that sums up all working days per year and returns the sum
-  // takes the output of getWorkingDaysPerMonth as input
-  function getTotalWorkingDaysPerYear(year) {
-  
-      const months = getWorkingDaysPerMonth(year);
-  
-      let sum = 0;
-      for (let i = 0; i < months.length; i++) {
-          sum += months[i].workingDays;
-      }
-      return sum;
-  }
-  
+    blocks.forEach((block, index) => {
+        drawRectangle(
+            label(block, index),
+            color(block, index),
+            widthOfColumns(settings, block.colSpan),
+            settings.shapeHeight,
+            xOfColumn(settings, block.colStart),
+            y
+        );
+    });
+}
+
 const colorMaps = {
   week: ["#8e8be1", "#7e7cc8"],
   day: ["#FFE5CC", "#FFD1A3", "#FFBD7A", "#FFA952", "#FF9529"], // Mon-Fri orange gradient
@@ -170,193 +143,54 @@ async function drawRectangle(content, color, width, height, x, y){
 }
 
 async function drawMonths(year, settings) {
-    const {
-        shapeWidth,
-        shapeHeight,
-        padding
-    } = settings;
-    
-    let monthX = settings.startX;
-    let monthY = calculateYPosition(settings, 'drawMonths');
-
-    const months = getWorkingDaysPerMonth(year);
-    
-    months.forEach(month => {
-        let monthWidth = ((shapeWidth + padding) * month.workingDays - padding);
-        drawRectangle(month.month, getColor(months.indexOf(month), "month"), monthWidth, shapeHeight, monthX, monthY);
-        monthX += monthWidth + padding;
-    });
+    drawRow(settings, 'drawMonths', monthBlocks(year),
+        (month) => month.label,
+        (month) => getColor(month.index, "month"));
 }
 
-//function to draw the weeks of the year
 async function drawWeeks(year, settings) {
-    const {
-        shapeWidth,
-        shapeHeight,
-        padding,
-        weekPrefix
-    } = settings;
+    const { weekPrefix } = settings;
 
-    let weekX = settings.startX;
-    let weekY = calculateYPosition(settings, 'drawWeeks');
-
-    // Get first day of the year and its week properties
-    const firstDay = dayjs(`${year}-01-01`);
-    const firstWeek = firstDay.isoWeek();
-    const lastDay = dayjs(`${year}-12-31`);
-    const lastWeek = lastDay.isoWeek();
-
-    // Adjust starting position based on what weekday Jan 1st is
-    const initialOffset = (firstDay.isoWeekday() - 1) * (shapeWidth + padding);
-    weekX -= initialOffset;
-
-    // Handle year boundary cases
-    const startWeek = (firstWeek === 1) ? 1 : firstWeek;
-    const endWeek = (lastWeek === 1) ? 52 : lastWeek;
-
-    for (let week = startWeek; week <= endWeek; week++) {
-        const weekWidth = shapeWidth * 5 + 4 * padding;
-        const weekLabel = weekPrefix ? `${weekPrefix} ${week}` : `${week}`;
-        drawRectangle(weekLabel, getColor(week, "week"), weekWidth, shapeHeight, weekX, weekY);
-        weekX += weekWidth + padding;
-    }
+    drawRow(settings, 'drawWeeks', weekBlocks(year),
+        (week) => weekPrefix ? `${weekPrefix} ${week.week}` : `${week.week}`,
+        (week) => getColor(week.week, "week"));
 }
-  
+
 async function drawIterations(year, settings) {
     const {
-        shapeWidth,
-        shapeHeight,
-        padding,
         IterationWeekOffset,
         IterationDayOffset,
         daysPerIteration,
         IterationStartNumber,
         IterationPrefix,
         IterationSuffix
-      } = settings;
-
-    const firstDayOfYear = dayjs(`${year}-01-01`).isoWeekday(); // 1-5 (Mon-Fri)
-    const desiredStartDay = IterationDayOffset + 1; // Convert 0-based to 1-5 (Mon-Fri)
-    
-    // Calculate initial offset, allowing for negative values to start in previous year
-    let dayOffset = (desiredStartDay - firstDayOfYear);
-    
-    let iterationX = settings.startX + 
-        (IterationWeekOffset * 5 + dayOffset) * (shapeWidth + padding);
-    let iterationY = calculateYPosition(settings, 'drawIterations');
-
-    const numberOfIterations = Math.ceil((getTotalWorkingDaysPerYear(year) - IterationWeekOffset * 5 - IterationDayOffset) / daysPerIteration);
-
-    const iterationWidth = shapeWidth * daysPerIteration + (daysPerIteration - 1) * padding;
-
-    for (let iteration = 0; iteration < numberOfIterations; iteration++) {
-        drawRectangle(IterationPrefix + (iteration + IterationStartNumber).toString() + IterationSuffix,
-                      getColor(iteration, "iteration"),
-                      iterationWidth, shapeHeight,
-                      iterationX, iterationY);
-        iterationX += iterationWidth + padding;
-    }
-
-}
-async function drawQuarters(year, settings) {
-    const {
-        shapeWidth,
-        shapeHeight,
-        padding,
-        qOneStartMonth
     } = settings;
 
-    let quarterX = settings.startX;
-    let quarterY = calculateYPosition(settings, 'drawQuarters');
-
-    const quarters = getWorkingDaysPerQuarter(year, qOneStartMonth);
-
-    quarters.forEach(quarter => {
-        let quarterWidth = ((shapeWidth + padding) * quarter.workingDays - padding);
-        drawRectangle(quarter.quarter, getColor(quarters.indexOf(quarter), "quarter"), quarterWidth, shapeHeight, quarterX, quarterY);
-        quarterX += quarterWidth + padding;
-    });
-}
-
-function getWorkingDaysBetweenMonths(year, startMonth, endMonth) {
-
-  const months = getWorkingDaysPerMonth(year);
-
-  return months.reduce((total, month, index) => {
-    if(index >= startMonth && index < endMonth){
-      return total + month.workingDays;
-    }
-    return total;
-  }, 0);
-
-}
-
-
-function getWorkingDaysPerQuarter(year, qOneStartMonth) {
-    const quarters = [];
-    
-    const startMonths = [];
-    startMonths.push(qOneStartMonth);
-
-    for (let q = 1; q <= 3; q++) {
-        startMonths.push( q * 3 + qOneStartMonth );
-    }
-
-    const months = getWorkingDaysPerMonth(year);
-
-    if (qOneStartMonth > 0) {
-        quarters.push({
-          quarter: "Q4/" + (year - 1).toString(),  
-          workingDays: getWorkingDaysBetweenMonths(year, 0, qOneStartMonth)
-        });
-      };
-    
-    startMonths.forEach((startMonthOfCurrentQuarter, indexOfCurrentStartMonth) => {
-        let startMonthOfNextQuarter = indexOfCurrentStartMonth + 1 < startMonths.length 
-            ? startMonths[indexOfCurrentStartMonth + 1]
-            : 12;
-  
-        quarters.push({
-            quarter: "Q" + (startMonths.indexOf(startMonthOfCurrentQuarter) + 1).toString() + "/" + year.toString(),
-            workingDays: getWorkingDaysBetweenMonths(year, startMonthOfCurrentQuarter, startMonthOfNextQuarter) 
-        });
+    const iterations = iterationBlocks(year, {
+        weekdayIndex: IterationDayOffset,
+        weekOffset: IterationWeekOffset,
+        daysPerIteration,
+        startNumber: IterationStartNumber,
     });
 
-    return quarters;
+    drawRow(settings, 'drawIterations', iterations,
+        (iteration) => `${IterationPrefix}${iteration.number}${IterationSuffix}`,
+        (iteration, index) => getColor(index, "iteration"));
 }
 
-
+async function drawQuarters(year, settings) {
+    drawRow(settings, 'drawQuarters', quarterBlocks(year, settings.qOneStartMonth),
+        (quarter) => quarter.label,
+        (quarter) => getColor(quarter.index, "quarter"));
+}
 
 async function drawDays(year, settings) {
-    const {
-        shapeWidth,
-        shapeHeight,
-        padding
-    } = settings;
+    drawRow(settings, 'drawDays', dayBlocks(year),
+        (day) => day.label,
+        (day) => getColor(day.weekday, "day"));
+}
 
-    let dayX = settings.startX;
-    let dayY = calculateYPosition(settings, 'drawDays');
-
-    const startDate = dayjs(`${year}-01-01`);
-    const endDate = dayjs(`${year}-12-31`);
-    let currentDate = startDate;
-
-    while (currentDate.isBefore(endDate) || currentDate.isSame(endDate)) {
-        const weekday = currentDate.isoWeekday();
-        if (weekday <= 5) {
-            drawRectangle(
-                currentDate.format('DD'), 
-                getColor(weekday, "day"),  // Pass weekday instead of date
-                shapeWidth, 
-                shapeHeight, 
-                dayX, 
-                dayY
-            );
-            dayX += shapeWidth + padding;
-        }
-        currentDate = currentDate.add(1, 'day');
-    }
-}async function drawCalendar() {
+async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 

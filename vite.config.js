@@ -1,17 +1,20 @@
 import path from 'path';
 import fs from 'fs';
 import dns from 'dns';
+import {fileURLToPath} from 'url';
 import {defineConfig} from 'vite';
 
 // https://vitejs.dev/config/server-options.html#server-host
 dns.setDefaultResultOrder('verbatim');
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 // make sure vite picks up all html files in root, needed for vite build
 const allHtmlEntries = fs
   .readdirSync('.')
   .filter((file) => path.extname(file) === '.html')
   .reduce((acc, file) => {
-    acc[path.basename(file, '.html')] = path.resolve(__dirname, file);
+    acc[path.basename(file, '.html')] = path.resolve(rootDir, file);
 
     return acc;
   }, {});
