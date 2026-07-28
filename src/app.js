@@ -10,6 +10,7 @@ import {
     widthOfColumns,
 } from './calendar.js';
 import { board, run, takeStats, isRateLimitError } from './board.js';
+import { tagCalendar } from './anchors.js';
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -235,9 +236,12 @@ async function drawCalendar() {
         // Nothing below may run before every shape actually exists on the
         // board: grouping an empty array fails, and closing the panel unloads
         // the app along with any calls still in flight.
-        const shapes = (await Promise.all(
+        const drawnRows = await Promise.all(
             rows.map((row) => drawRow(settings, row, onShapeDrawn))
-        )).flat();
+        );
+        const shapes = drawnRows.flat();
+
+        await tagCalendar({ drawnRows, rows, year });
 
         const drawing = takeStats();
         let groupingMs = 0;
