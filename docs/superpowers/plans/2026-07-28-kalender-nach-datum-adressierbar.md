@@ -402,8 +402,15 @@ export async function tagCalendar({ drawnRows, rows, year }) {
 /**
  * Every stored calendar, resolved to a measured grid.
  *
- * Entries whose anchors are gone - calendar deleted, undo - are dropped from
- * AppData, so a board heals itself instead of collecting dead entries.
+ * These are two different failures, and they get different treatment:
+ * - Anchors gone (calendar deleted, undo): the AppData entry is dropped, so a
+ *   board heals itself instead of collecting dead entries.
+ * - Anchors present but the measurement is implausible (a day cell dragged out
+ *   of the group): the entry is kept as-is and simply skipped for this call.
+ *   The anchors and their metadata tags are still there, so dragging the cell
+ *   back makes the calendar findable again - dropping the entry here would
+ *   permanently defeat that.
+ * Both cases are reported, per the design's error-handling table.
  */
 export async function findCalendars() {
     const stored = await readCalendars();
@@ -411,9 +418,20 @@ export async function findCalendars() {
     const resolved = [];
 
     for (const entry of stored) {
-        const calendar = await measure(entry);
-        if (!calendar) continue;
+        const { calendar, reason } = await measure(entry);
+
+        if (reason === 'missing') {
+            console.warn(`Timeline Builder: anchors missing for calendar ${entry.calendarId}, dropping entry.`);
+            continue;
+        }
+
         alive.push(entry);
+
+        if (reason === 'implausible') {
+            console.warn(`Timeline Builder: measurement implausible for calendar ${entry.calendarId}, skipping.`);
+            continue;
+        }
+
         resolved.push(calendar);
     }
 
@@ -430,13 +448,20 @@ export async function updateCalendar(calendarId, changes) {
 }
 
 export async function readCalendars() {
-    return (await board.getAppData(APP_DATA_KEY)) ?? [];
+    return (await run(() => board.getAppData(APP_DATA_KEY))) ?? [];
 }
 
 async function writeCalendars(calendars) {
-    await board.setAppData(APP_DATA_KEY, calendars);
+    await run(() => board.setAppData(APP_DATA_KEY, calendars));
 }
 
+/**
+ * Resolves one entry's anchors to a measured grid.
+ *
+ * Returns a reason alongside the calendar so callers can tell an unresolvable
+ * anchor (the entry should be forgotten) apart from an implausible
+ * measurement (the entry stays, only the draw is skipped).
+ */
 async function measure(entry) {
     let firstDay;
     let lastDay;
@@ -451,7 +476,7 @@ async function measure(entry) {
             run(() => board.getById(entry.anchors.topLeft)),
         ]);
     } catch {
-        return null;
+        return { calendar: null, reason: 'missing' };
     }
 
     const grid = gridFrom({
@@ -460,15 +485,18 @@ async function measure(entry) {
         cellWidth: firstDay.width,
         columns: totalWorkingDays(entry.year),
     });
-    if (!grid) return null;
+    if (!grid) return { calendar: null, reason: 'implausible' };
 
     return {
-        entry,
-        year: entry.year,
-        grid,
-        rowHeight: firstDay.height,
-        top: topLeft.y - topLeft.height / 2,
-        bottom: firstDay.y + firstDay.height / 2,
+        calendar: {
+            entry,
+            year: entry.year,
+            grid,
+            rowHeight: firstDay.height,
+            top: topLeft.y - topLeft.height / 2,
+            bottom: firstDay.y + firstDay.height / 2,
+        },
+        reason: null,
     };
 }
 ```
