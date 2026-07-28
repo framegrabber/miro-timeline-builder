@@ -15,10 +15,7 @@ const { board } = window.miro;
 
 // Every call to the board goes through here so we stay inside Miro's credit
 // budget - see rateLimit.js for why that budget runs out faster than it looks.
-// The panel can override the concurrency per draw while we work out what this
-// board can actually take.
-const DEFAULT_CONCURRENCY = 32;
-const limiter = createLimiter({ concurrency: DEFAULT_CONCURRENCY });
+const limiter = createLimiter();
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -232,8 +229,6 @@ async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
-    limiter.setConcurrency(settings.concurrency || DEFAULT_CONCURRENCY);
-
     const rows = planRows(year, settings);
     const total = rows.reduce((count, row) => count + row.blocks.length, 0);
 
@@ -306,7 +301,7 @@ function logDrawStats(year, stats, groupingMs) {
     console.log(
         `Latency accounts for ${seconds(latencyBound)} of ${seconds(stats.wallClockMs)} (${Math.round(share * 100)}%). ` +
         (share > 0.7
-            ? 'Raising "Parallel Miro calls" should make this faster.'
+            ? 'Raising `concurrency` in rateLimit.js should make this faster.'
             : 'Miro is the bottleneck here - more parallelism will not help much.')
     );
 

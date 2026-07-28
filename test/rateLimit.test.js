@@ -171,39 +171,6 @@ test('releases its slot when a task throws', async () => {
     assert.equal(await limiter.run(CREDITS_PER_ITEM, async () => 'still works'), 'still works');
 });
 
-test('raising the concurrency lets queued tasks through immediately', async () => {
-    const limiter = createLimiter({ concurrency: 1, ...virtualClock() });
-
-    let inFlight = 0;
-    let peak = 0;
-
-    const release = [];
-    const tasks = Array.from({ length: 4 }, () =>
-        limiter.run(CREDITS_PER_ITEM, async () => {
-            inFlight++;
-            peak = Math.max(peak, inFlight);
-            await new Promise((resolve) => release.push(resolve));
-            inFlight--;
-        })
-    );
-
-    await Promise.resolve();
-    assert.equal(peak, 1);
-
-    limiter.setConcurrency(4);
-    await Promise.resolve();
-    assert.equal(peak, 4, 'the three queued tasks should start without waiting for a slot');
-
-    release.forEach((resolve) => resolve());
-    await Promise.all(tasks);
-});
-
-test('never drops below one parallel call', async () => {
-    const limiter = createLimiter({ ...virtualClock() });
-    limiter.setConcurrency(0);
-    assert.equal(await limiter.run(CREDITS_PER_ITEM, async () => 'ran'), 'ran');
-});
-
 test('reports stats for the calls it ran', async () => {
     const clock = virtualClock();
     const limiter = createLimiter({ concurrency: 1, ...clock });

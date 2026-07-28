@@ -43,7 +43,8 @@ export function createLimiter({
     // Miro limits credits per minute, not calls in flight, so this is a
     // throughput knob rather than a safety one. Higher means fewer waves of
     // round trips; too high and the board's own renderer starts to struggle.
-    concurrency = 32,
+    // 24 is what measuring on a real board settled on.
+    concurrency = 24,
     // Plan to use only part of the budget - the rest is headroom for whatever
     // else the user is running against the same session.
     utilisation = 0.8,
@@ -57,12 +58,11 @@ export function createLimiter({
     const samples = [];
     const longestWindow = Math.max(...windows.map((window) => window.ms));
 
-    let limit = concurrency;
     let active = 0;
     const waiting = [];
 
     function acquire() {
-        if (active < limit) {
+        if (active < concurrency) {
             active++;
             return Promise.resolve();
         }
@@ -167,7 +167,7 @@ export function createLimiter({
 
         const stats = {
             calls: samples.length,
-            concurrency: limit,
+            concurrency,
             wallClockMs,
             throttledMs: samples.reduce((sum, sample) => sum + sample.waitedMs, 0),
             retries: samples.reduce((sum, sample) => sum + sample.retries, 0),
@@ -187,16 +187,6 @@ export function createLimiter({
     return {
         run,
         takeStats,
-
-        // Changing this mid-flight is deliberate: it is a tuning knob in the
-        // panel, so waiting calls have to be let through on the spot.
-        setConcurrency(next) {
-            limit = Math.max(1, Math.floor(next));
-            while (active < limit && waiting.length) {
-                active++;
-                waiting.shift()();
-            }
-        },
 
         // Diagnostics only - handy when you want to know why a draw is crawling.
         spent: (ms = MINUTE) => spentWithin(ms, now()),
