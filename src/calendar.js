@@ -22,21 +22,25 @@ export function isWorkingDay(date) {
     return date.isoWeekday() <= WORKING_DAYS_PER_WEEK;
 }
 
+export function nextWorkingDay(date) {
+    let day = date;
+    while (!isWorkingDay(day)) day = day.add(1, 'day');
+    return day;
+}
+
+export function previousWorkingDay(date) {
+    let day = date;
+    while (!isWorkingDay(day)) day = day.subtract(1, 'day');
+    return day;
+}
+
 /** The date that owns column 0. Skips forward when Jan 1st is a weekend. */
 export function firstWorkingDayOf(year) {
-    let date = dayjs(`${year}-01-01`);
-    while (!isWorkingDay(date)) {
-        date = date.add(1, 'day');
-    }
-    return date;
+    return nextWorkingDay(dayjs(`${year}-01-01`));
 }
 
 export function lastWorkingDayOf(year) {
-    let date = dayjs(`${year}-12-31`);
-    while (!isWorkingDay(date)) {
-        date = date.subtract(1, 'day');
-    }
-    return date;
+    return previousWorkingDay(dayjs(`${year}-12-31`));
 }
 
 /**
@@ -187,6 +191,33 @@ export function xOfColumn({ startX, shapeWidth, padding }, colStart) {
 
 export function widthOfColumns({ shapeWidth, padding }, colSpan) {
     return shapeWidth * colSpan + (colSpan - 1) * padding;
+}
+
+/**
+ * Rebuilds the drawing settings from two measured day cells, so a calendar
+ * that is already on the board can be addressed by date again.
+ *
+ * The measured x of a cell is its centre, because app.js creates shapes
+ * centred - hence the half-width shift back to the left edge.
+ *
+ * Returns null when the measurement cannot describe a grid. That is the case
+ * once a single cell has been dragged out of the calendar: the derived pitch
+ * then describes nothing real, and putting something plausible-looking in the
+ * wrong place is worse than putting nothing anywhere.
+ */
+export function gridFrom({ firstCenterX, lastCenterX, cellWidth, columns }) {
+    if (!(cellWidth > 0) || !(columns > 1)) return null;
+
+    const pitch = (lastCenterX - firstCenterX) / (columns - 1);
+    const padding = pitch - cellWidth;
+
+    if (!(pitch > 0) || padding < 0 || padding > cellWidth) return null;
+
+    return {
+        startX: firstCenterX - cellWidth / 2,
+        shapeWidth: cellWidth,
+        padding,
+    };
 }
 
 export function quarterBlocks(year, qOneStartMonth) {

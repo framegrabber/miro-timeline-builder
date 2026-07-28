@@ -15,6 +15,9 @@ import {
     quarterBlocks,
     xOfColumn,
     widthOfColumns,
+    nextWorkingDay,
+    previousWorkingDay,
+    gridFrom,
 } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -269,4 +272,98 @@ test('months and quarters end exactly where the day row ends', () => {
             );
         }
     }
+});
+
+// --- working day stepping ----------------------------------------------------
+
+test('nextWorkingDay and previousWorkingDay step off weekends', () => {
+    // 2026-07-24 Fri, 07-25 Sat, 07-26 Sun, 07-27 Mon
+    const saturday = dayjs('2026-07-25');
+    assert.equal(nextWorkingDay(saturday).format('YYYY-MM-DD'), '2026-07-27');
+    assert.equal(previousWorkingDay(saturday).format('YYYY-MM-DD'), '2026-07-24');
+
+    const sunday = dayjs('2026-07-26');
+    assert.equal(nextWorkingDay(sunday).format('YYYY-MM-DD'), '2026-07-27');
+    assert.equal(previousWorkingDay(sunday).format('YYYY-MM-DD'), '2026-07-24');
+
+    const monday = dayjs('2026-07-27');
+    assert.equal(nextWorkingDay(monday).format('YYYY-MM-DD'), '2026-07-27',
+        'a working day is its own next working day');
+    assert.equal(previousWorkingDay(monday).format('YYYY-MM-DD'), '2026-07-27');
+});
+
+// --- rebuilding the grid from the board --------------------------------------
+
+// What the board reports back. Shapes are created centred - app.js passes
+// `x + width / 2` to createShape - so a measured x is the centre of the cell,
+// not the left edge that xOfColumn works with.
+function measure(settings, columns) {
+    return {
+        firstCenterX: xOfColumn(settings, 0) + settings.shapeWidth / 2,
+        lastCenterX: xOfColumn(settings, columns - 1) + settings.shapeWidth / 2,
+        cellWidth: settings.shapeWidth,
+        columns,
+    };
+}
+
+const DRAW_SETTINGS = [
+    { startX: 0, shapeWidth: 100, padding: 2 },
+    { startX: -1234.5, shapeWidth: 40, padding: 0 },
+    { startX: 980, shapeWidth: 250, padding: 12 },
+];
+
+test('gridFrom rebuilds the settings the calendar was drawn with', () => {
+    for (const year of YEARS) {
+        const columns = totalWorkingDays(year);
+
+        for (const settings of DRAW_SETTINGS) {
+            const grid = gridFrom(measure(settings, columns));
+            assert.ok(grid, `${year} / width ${settings.shapeWidth}`);
+
+            for (let column = 0; column < columns; column++) {
+                assert.ok(
+                    Math.abs(xOfColumn(grid, column) - xOfColumn(settings, column)) < 1e-6,
+                    `${year} column ${column}: ${xOfColumn(grid, column)} != ${xOfColumn(settings, column)}`
+                );
+                assert.ok(
+                    Math.abs(widthOfColumns(grid, 5) - widthOfColumns(settings, 5)) < 1e-6,
+                    `${year} span width`
+                );
+            }
+        }
+    }
+});
+
+test('gridFrom survives a calendar that was moved and scaled', () => {
+    const drawn = { startX: 100, shapeWidth: 100, padding: 2 };
+    const columns = totalWorkingDays(2026);
+    const measured = measure(drawn, columns);
+
+    // Dragging the group shifts every coordinate; scaling multiplies them.
+    const moved = { ...measured, firstCenterX: measured.firstCenterX + 5000, lastCenterX: measured.lastCenterX + 5000 };
+    assert.equal(gridFrom(moved).shapeWidth, 100);
+    assert.ok(Math.abs(gridFrom(moved).padding - 2) < 1e-6);
+
+    const scaled = {
+        firstCenterX: measured.firstCenterX * 2,
+        lastCenterX: measured.lastCenterX * 2,
+        cellWidth: measured.cellWidth * 2,
+        columns,
+    };
+    assert.equal(gridFrom(scaled).shapeWidth, 200);
+    assert.ok(Math.abs(gridFrom(scaled).padding - 4) < 1e-6);
+});
+
+test('gridFrom refuses measurements that cannot describe a grid', () => {
+    const sane = measure({ startX: 0, shapeWidth: 100, padding: 2 }, 261);
+
+    assert.equal(gridFrom({ ...sane, cellWidth: 0 }), null, 'no cell width');
+    assert.equal(gridFrom({ ...sane, columns: 1 }), null, 'a single column has no pitch');
+    assert.equal(gridFrom({ ...sane, lastCenterX: sane.firstCenterX }), null, 'both anchors in one spot');
+    assert.equal(gridFrom({ ...sane, lastCenterX: sane.firstCenterX - 1000 }), null, 'anchors swapped');
+
+    // Someone dragged the last day cell far out of the calendar: the derived
+    // pitch then describes nothing real, and a plausible-looking wrong answer
+    // is worse than no answer.
+    assert.equal(gridFrom({ ...sane, lastCenterX: sane.firstCenterX + 261 * 500 }), null, 'pitch far beyond one cell');
 });
