@@ -105,3 +105,9 @@ body {
 .hidden {
   display: none;
 }
+
+.draw-status {
+  margin: var(--space-xsmall) 0 0;
+  text-align: center;
+  color: var(--gray-600, #5f6368);
+}
