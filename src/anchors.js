@@ -1,4 +1,4 @@
-import { board, run } from './board.js';
+import { board, run, isRateLimitError } from './board.js';
 import { gridFrom, totalWorkingDays } from './calendar.js';
 
 const APP_DATA_KEY = 'calendars';
@@ -55,7 +55,7 @@ export async function tagCalendar({ drawnRows, rows, year }) {
 /**
  * Every stored calendar, resolved to a measured grid.
  *
- * These are two different failures, and they get different treatment:
+ * These are three different outcomes, and they get different treatment:
  * - Anchors gone (calendar deleted, undo): the AppData entry is dropped, so a
  *   board heals itself instead of collecting dead entries.
  * - Anchors present but the measurement is implausible (a day cell dragged out
@@ -63,7 +63,13 @@ export async function tagCalendar({ drawnRows, rows, year }) {
  *   The anchors and their metadata tags are still there, so dragging the cell
  *   back makes the calendar findable again - dropping the entry here would
  *   permanently defeat that.
- * Both cases are reported, per the design's error-handling table.
+ * - getById itself failed on a rate limit that outlasted run()'s retries: the
+ *   anchor's real state is unknown, so this is treated like 'implausible', not
+ *   like 'missing' - the entry is kept and only this call's draw is skipped.
+ *   Pruning here would be permanent over a failure that is only temporary; the
+ *   tags stay on the shapes but tagCalendar only runs at draw time, so a
+ *   wrongly dropped entry could never be recovered by re-finding it.
+ * All three are reported, per the design's error-handling table.
  */
 export async function findCalendars() {
     const stored = await readCalendars();
@@ -78,13 +84,19 @@ export async function findCalendars() {
             continue;
         }
 
-        alive.push(entry);
-
-        if (reason === 'implausible') {
-            console.warn(`Timeline Builder: measurement implausible for calendar ${entry.calendarId}, skipping.`);
+        if (reason === 'rate-limited') {
+            console.warn(`Timeline Builder: rate limited while resolving anchors for calendar ${entry.calendarId}, keeping entry and skipping.`);
+            alive.push(entry);
             continue;
         }
 
+        if (reason === 'implausible') {
+            console.warn(`Timeline Builder: measurement implausible for calendar ${entry.calendarId}, skipping.`);
+            alive.push(entry);
+            continue;
+        }
+
+        alive.push(entry);
         resolved.push(calendar);
     }
 
@@ -112,8 +124,8 @@ async function writeCalendars(calendars) {
  * Resolves one entry's anchors to a measured grid.
  *
  * Returns a reason alongside the calendar so callers can tell an unresolvable
- * anchor (the entry should be forgotten) apart from an implausible
- * measurement (the entry stays, only the draw is skipped).
+ * anchor (the entry should be forgotten) apart from a transient failure or an
+ * implausible measurement (the entry stays, only the draw is skipped).
  */
 async function measure(entry) {
     let firstDay;
@@ -122,13 +134,17 @@ async function measure(entry) {
 
     try {
         // getById throws when the id is gone, which is exactly how a deleted
-        // calendar announces itself.
+        // calendar announces itself. But run() also retries rate-limit errors
+        // with backoff and re-throws once retries are exhausted - that is not
+        // the anchor being gone, it is the board call never having completed,
+        // so it must not be classified the same as a genuinely missing anchor.
         [firstDay, lastDay, topLeft] = await Promise.all([
             run(() => board.getById(entry.anchors.firstDay)),
             run(() => board.getById(entry.anchors.lastDay)),
             run(() => board.getById(entry.anchors.topLeft)),
         ]);
-    } catch {
+    } catch (error) {
+        if (isRateLimitError(error)) return { calendar: null, reason: 'rate-limited' };
         return { calendar: null, reason: 'missing' };
     }
 
