@@ -9,13 +9,7 @@ import {
     xOfColumn,
     widthOfColumns,
 } from './calendar.js';
-import { CREDITS_PER_ITEM, createLimiter, isRateLimitError } from './rateLimit.js';
-
-const { board } = window.miro;
-
-// Every call to the board goes through here so we stay inside Miro's credit
-// budget - see rateLimit.js for why that budget runs out faster than it looks.
-const limiter = createLimiter();
+import { board, run, takeStats, isRateLimitError } from './board.js';
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -131,7 +125,7 @@ function getColor(number, type) {
 
   
 function drawRectangle(content, color, width, height, x, y){
-    return limiter.run(CREDITS_PER_ITEM, () => board.createShape({
+    return run(() => board.createShape({
         content: content,
         type: "shape",
         shape: "rectangle",
@@ -245,17 +239,17 @@ async function drawCalendar() {
             rows.map((row) => drawRow(settings, row, onShapeDrawn))
         )).flat();
 
-        const drawing = limiter.takeStats();
+        const drawing = takeStats();
         let groupingMs = 0;
 
         if (shapes.length > 1) {
             setBusy(true, 'Grouping the calendar...');
 
             const startedAt = performance.now();
-            await limiter.run(CREDITS_PER_ITEM, () => board.group({ items: shapes }));
+            await run(() => board.group({ items: shapes }));
             groupingMs = performance.now() - startedAt;
 
-            limiter.takeStats(); // Reported separately, so keep it out of the round trips.
+            takeStats(); // Reported separately, so keep it out of the round trips.
         }
 
         logDrawStats(year, drawing, groupingMs);
