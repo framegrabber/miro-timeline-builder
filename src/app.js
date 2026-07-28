@@ -15,7 +15,10 @@ const { board } = window.miro;
 
 // Every call to the board goes through here so we stay inside Miro's credit
 // budget - see rateLimit.js for why that budget runs out faster than it looks.
-const limiter = createLimiter();
+// The panel can override the concurrency per draw while we work out what this
+// board can actually take.
+const DEFAULT_CONCURRENCY = 32;
+const limiter = createLimiter({ concurrency: DEFAULT_CONCURRENCY });
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -95,17 +98,20 @@ Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
 // All geometry lives in calendar.js - this only turns blocks into Miro shapes.
 // Resolves with the created shapes; the caller must await it, otherwise the
 // calendar is still being drawn when we try to group it.
-function drawRow(settings, position, blocks, label, color) {
-    const y = calculateYPosition(settings, position);
+function drawRow(settings, row, onShapeDrawn) {
+    const y = calculateYPosition(settings, row.position);
 
-    return Promise.all(blocks.map((block, index) => drawRectangle(
-        label(block, index),
-        color(block, index),
+    return Promise.all(row.blocks.map((block, index) => drawRectangle(
+        row.label(block, index),
+        row.color(block, index),
         widthOfColumns(settings, block.colSpan),
         settings.shapeHeight,
         xOfColumn(settings, block.colStart),
         y
-    )));
+    ).then((shape) => {
+        onShapeDrawn();
+        return shape;
+    })));
 }
 
 const colorMaps = {
@@ -145,21 +151,28 @@ function drawRectangle(content, color, width, height, x, y){
     }));
 }
 
-async function drawMonths(year, settings) {
-    return drawRow(settings, 'drawMonths', monthBlocks(year),
-        (month) => month.label,
-        (month) => getColor(month.index, "month"));
+// Rows are described before anything is drawn: the total shape count is needed
+// for the progress readout, and the order they are listed in is the order the
+// board receives them in.
+function monthRow(year) {
+    return {
+        position: 'drawMonths',
+        blocks: monthBlocks(year),
+        label: (month) => month.label,
+        color: (month) => getColor(month.index, "month"),
+    };
 }
 
-async function drawWeeks(year, settings) {
-    const { weekPrefix } = settings;
-
-    return drawRow(settings, 'drawWeeks', weekBlocks(year),
-        (week) => weekPrefix ? `${weekPrefix} ${week.week}` : `${week.week}`,
-        (week) => getColor(week.week, "week"));
+function weekRow(year, { weekPrefix }) {
+    return {
+        position: 'drawWeeks',
+        blocks: weekBlocks(year),
+        label: (week) => weekPrefix ? `${weekPrefix} ${week.week}` : `${week.week}`,
+        color: (week) => getColor(week.week, "week"),
+    };
 }
 
-async function drawIterations(year, settings) {
+function iterationRow(year, settings) {
     const {
         IterationWeekOffset,
         IterationDayOffset,
@@ -169,61 +182,88 @@ async function drawIterations(year, settings) {
         IterationSuffix
     } = settings;
 
-    const iterations = iterationBlocks(year, {
-        weekdayIndex: IterationDayOffset,
-        weekOffset: IterationWeekOffset,
-        daysPerIteration,
-        startNumber: IterationStartNumber,
-    });
-
-    return drawRow(settings, 'drawIterations', iterations,
-        (iteration) => `${IterationPrefix}${iteration.number}${IterationSuffix}`,
-        (iteration, index) => getColor(index, "iteration"));
+    return {
+        position: 'drawIterations',
+        blocks: iterationBlocks(year, {
+            weekdayIndex: IterationDayOffset,
+            weekOffset: IterationWeekOffset,
+            daysPerIteration,
+            startNumber: IterationStartNumber,
+        }),
+        label: (iteration) => `${IterationPrefix}${iteration.number}${IterationSuffix}`,
+        color: (iteration, index) => getColor(index, "iteration"),
+    };
 }
 
-async function drawQuarters(year, settings) {
-    return drawRow(settings, 'drawQuarters', quarterBlocks(year, settings.qOneStartMonth),
-        (quarter) => quarter.label,
-        (quarter) => getColor(quarter.index, "quarter"));
+function quarterRow(year, settings) {
+    return {
+        position: 'drawQuarters',
+        blocks: quarterBlocks(year, settings.qOneStartMonth),
+        label: (quarter) => quarter.label,
+        color: (quarter) => getColor(quarter.index, "quarter"),
+    };
 }
 
-async function drawDays(year, settings) {
-    return drawRow(settings, 'drawDays', dayBlocks(year),
-        (day) => day.label,
-        (day) => getColor(day.weekday, "day"));
+function dayRow(year) {
+    return {
+        position: 'drawDays',
+        blocks: dayBlocks(year),
+        label: (day) => day.label,
+        color: (day) => getColor(day.weekday, "day"),
+    };
+}
+
+// Coarsest rows first. The board receives the calls in this order, so the
+// shape of the year is visible within a second while the 261 day boxes - three
+// quarters of all shapes - fill in behind it.
+function planRows(year, settings) {
+    const rows = [];
+
+    if (settings.drawQuarters) rows.push(quarterRow(year, settings));
+    rows.push(monthRow(year)); // Always draw months
+    if (settings.drawIterations) rows.push(iterationRow(year, settings));
+    if (settings.drawWeeks) rows.push(weekRow(year, settings));
+    rows.push(dayRow(year)); // Always draw days
+
+    return rows;
 }
 
 async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
-    setBusy(true, 'Drawing the calendar...');
+    limiter.setConcurrency(settings.concurrency || DEFAULT_CONCURRENCY);
 
-    const rows = [
-        drawMonths(year, settings), // Always draw months
-        drawDays(year, settings) // Always draw days
-    ];
+    const rows = planRows(year, settings);
+    const total = rows.reduce((count, row) => count + row.blocks.length, 0);
 
-    if (settings.drawQuarters) {
-        rows.push(drawQuarters(year, settings));
-    }
-    if (settings.drawIterations) {
-        rows.push(drawIterations(year, settings));
-    }
-    if (settings.drawWeeks) {
-        rows.push(drawWeeks(year, settings));
-    }
+    let drawn = 0;
+    const onShapeDrawn = () => setBusy(true, `Drawing the calendar... ${++drawn} / ${total}`);
+
+    setBusy(true, `Drawing the calendar... 0 / ${total}`);
 
     try {
         // Nothing below may run before every shape actually exists on the
         // board: grouping an empty array fails, and closing the panel unloads
         // the app along with any calls still in flight.
-        const shapes = (await Promise.all(rows)).flat();
+        const shapes = (await Promise.all(
+            rows.map((row) => drawRow(settings, row, onShapeDrawn))
+        )).flat();
+
+        const drawing = limiter.takeStats();
+        let groupingMs = 0;
 
         if (shapes.length > 1) {
             setBusy(true, 'Grouping the calendar...');
+
+            const startedAt = performance.now();
             await limiter.run(CREDITS_PER_ITEM, () => board.group({ items: shapes }));
+            groupingMs = performance.now() - startedAt;
+
+            limiter.takeStats(); // Reported separately, so keep it out of the round trips.
         }
+
+        logDrawStats(year, drawing, groupingMs);
 
         await board.ui.closePanel();
     } catch (error) {
@@ -231,6 +271,46 @@ async function drawCalendar() {
         setBusy(false, describeDrawFailure(error));
         console.error(error);
     }
+}
+
+function logDrawStats(year, stats, groupingMs) {
+    if (!stats) return;
+
+    const ms = (value) => `${Math.round(value)} ms`;
+    const seconds = (value) => `${(value / 1000).toFixed(1)} s`;
+
+    console.group(`Timeline Builder - ${year}: ${stats.calls} shapes in ${seconds(stats.wallClockMs + groupingMs)}`);
+
+    console.table({
+        'Shapes drawn':         { Value: stats.calls },
+        'Parallel calls':       { Value: stats.concurrency },
+        'Drawing':              { Value: seconds(stats.wallClockMs) },
+        'Grouping':             { Value: seconds(groupingMs) },
+        'Throughput':           { Value: `${stats.callsPerSecond.toFixed(1)} shapes/s` },
+        'Round trip, fastest':  { Value: ms(stats.fastestMs) },
+        'Round trip, median':   { Value: ms(stats.medianMs) },
+        'Round trip, p95':      { Value: ms(stats.p95Ms) },
+        'Round trip, slowest':  { Value: ms(stats.slowestMs) },
+        'Waited on rate limit': { Value: seconds(stats.throttledMs) },
+        'Retries':              { Value: stats.retries },
+        'Credits this draw':    { Value: stats.credits.toLocaleString('en-US') },
+        'Credits last minute':  { Value: `${stats.creditsLastMinute.toLocaleString('en-US')} / 100,000` },
+    });
+
+    // If the wall clock is roughly (shapes / parallel calls) x median round
+    // trip, we spent the time waiting on latency and more parallelism buys
+    // time back. If it is well above that, Miro itself is the bottleneck.
+    const latencyBound = (stats.calls / stats.concurrency) * stats.medianMs;
+    const share = stats.wallClockMs > 0 ? latencyBound / stats.wallClockMs : 0;
+
+    console.log(
+        `Latency accounts for ${seconds(latencyBound)} of ${seconds(stats.wallClockMs)} (${Math.round(share * 100)}%). ` +
+        (share > 0.7
+            ? 'Raising "Parallel Miro calls" should make this faster.'
+            : 'Miro is the bottleneck here - more parallelism will not help much.')
+    );
+
+    console.groupEnd();
 }
 
 function describeDrawFailure(error) {

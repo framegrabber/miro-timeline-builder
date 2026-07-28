@@ -171,6 +171,105 @@ test('releases its slot when a task throws', async () => {
     assert.equal(await limiter.run(CREDITS_PER_ITEM, async () => 'still works'), 'still works');
 });
 
+test('raising the concurrency lets queued tasks through immediately', async () => {
+    const limiter = createLimiter({ concurrency: 1, ...virtualClock() });
+
+    let inFlight = 0;
+    let peak = 0;
+
+    const release = [];
+    const tasks = Array.from({ length: 4 }, () =>
+        limiter.run(CREDITS_PER_ITEM, async () => {
+            inFlight++;
+            peak = Math.max(peak, inFlight);
+            await new Promise((resolve) => release.push(resolve));
+            inFlight--;
+        })
+    );
+
+    await Promise.resolve();
+    assert.equal(peak, 1);
+
+    limiter.setConcurrency(4);
+    await Promise.resolve();
+    assert.equal(peak, 4, 'the three queued tasks should start without waiting for a slot');
+
+    release.forEach((resolve) => resolve());
+    await Promise.all(tasks);
+});
+
+test('never drops below one parallel call', async () => {
+    const limiter = createLimiter({ ...virtualClock() });
+    limiter.setConcurrency(0);
+    assert.equal(await limiter.run(CREDITS_PER_ITEM, async () => 'ran'), 'ran');
+});
+
+test('reports stats for the calls it ran', async () => {
+    const clock = virtualClock();
+    const limiter = createLimiter({ concurrency: 1, ...clock });
+
+    const latencies = [10, 30, 20, 100];
+    for (const latency of latencies) {
+        await limiter.run(CREDITS_PER_ITEM, async () => clock.set(clock.now() + latency));
+    }
+
+    const stats = limiter.takeStats();
+    assert.equal(stats.calls, 4);
+    assert.equal(stats.concurrency, 1);
+    assert.equal(stats.credits, 4 * CREDITS_PER_ITEM);
+    assert.equal(stats.fastestMs, 10);
+    assert.equal(stats.medianMs, 20);
+    assert.equal(stats.slowestMs, 100);
+    assert.equal(stats.wallClockMs, 160);
+    assert.equal(stats.throttledMs, 0);
+    assert.equal(stats.retries, 0);
+});
+
+test('stats cover one draw at a time and reset when taken', async () => {
+    const limiter = createLimiter({ ...virtualClock() });
+
+    await limiter.run(CREDITS_PER_ITEM, async () => {});
+    assert.equal(limiter.takeStats().calls, 1);
+    assert.equal(limiter.takeStats(), null, 'nothing ran since the last report');
+
+    await limiter.run(CREDITS_PER_ITEM, async () => {});
+    assert.equal(limiter.takeStats().calls, 1);
+});
+
+test('stats count the time lost to throttling and to retries', async () => {
+    const clock = virtualClock();
+    const limiter = createLimiter({
+        concurrency: 1,
+        utilisation: 1,
+        windows: [{ limit: 50, ms: 1000 }],
+        retryBaseMs: 100,
+        ...clock,
+    });
+
+    let attempts = 0;
+    await limiter.run(CREDITS_PER_ITEM, async () => {});
+    await limiter.run(CREDITS_PER_ITEM, async () => {
+        if (attempts++ === 0) throw new Error('The API rate limit was exceeded.');
+    });
+
+    const stats = limiter.takeStats();
+    assert.equal(stats.retries, 1);
+    // 1000 ms waiting for the window to drain, 100 ms of backoff after the
+    // failure, then another 900 ms because the failed attempt spent credits
+    // of its own and the window has to drain a second time.
+    assert.equal(stats.throttledMs, 1000 + 100 + 900);
+});
+
+test('a failed call leaves no stats behind', async () => {
+    const limiter = createLimiter({ retries: 0, ...virtualClock() });
+
+    await assert.rejects(limiter.run(CREDITS_PER_ITEM, async () => {
+        throw new Error('boom');
+    }));
+
+    assert.equal(limiter.takeStats(), null);
+});
+
 test('recognises the rate limit errors Miro actually throws', () => {
     assert.ok(isRateLimitError(new Error(
         'The API rate limit was exceeded. Requests can use up to 100000 credits in total per minute.'
