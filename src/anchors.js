@@ -15,7 +15,7 @@ const METADATA_KEY = 'timelineBuilder';
  * metadata scan; the other way round it could not. That is why the tags sit on
  * the shapes and not only in AppData.
  */
-export async function tagCalendar({ drawnRows, rows, year }) {
+export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = true }) {
     const dayRowIndex = rows.findIndex((row) => row.position === 'drawDays');
     const dayShapes = drawnRows[dayRowIndex];
 
@@ -42,9 +42,7 @@ export async function tagCalendar({ drawnRows, rows, year }) {
             lastDay: shapes.lastDay.id,
             topLeft: shapes.topLeft.id,
         },
-        // Phase 2 adds the checkbox that writes `enabled`; until then the
-        // indicator is simply on for every calendar that gets drawn.
-        indicator: { enabled: true, circleId: null, anchorId: null, connectorId: null },
+        indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null },
         vacationItemIds: [],
     });
     await writeCalendars(calendars);

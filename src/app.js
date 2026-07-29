@@ -246,7 +246,7 @@ async function drawCalendar() {
         // tagging succeeds; its findability later is important but not a precondition
         // for showing the user what they asked for now.
         try {
-            await tagCalendar({ drawnRows, rows, year });
+            await tagCalendar({ drawnRows, rows, year, indicatorEnabled: settings.drawTodayIndicator });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
         }
