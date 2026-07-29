@@ -3,7 +3,14 @@ import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars } from './anchors.js';
 import { columnForToday } from './todayColumn.js';
 
-const ACCENT = '#ff5722';
+const CIRCLE_FILL = '#d81b60';
+const LINE_COLOR = '#000000';
+const LINE_WIDTH = 6;
+
+// The one number to change for the circle's size. Diameter is a multiple of
+// the calendar's measured rowHeight rather than a fixed pixel value, so it
+// keeps scaling with whatever the calendar was drawn at.
+const DIAMETER_FACTOR = 1.6;
 
 // Anything closer than this is the same position as far as anyone can see, and
 // writing it again would only burn credits.
@@ -63,19 +70,28 @@ async function createIndicator(calendar, x) {
     const { entry, rowHeight } = calendar;
     const created = [];
 
+    // With the old fixed diameter (one rowHeight) the circle's centre sat at
+    // `calendar.top - rowHeight`, which left exactly half a row of clearance
+    // between the circle's bottom edge and the calendar. Deriving the centre
+    // from the diameter, instead of hard-coding that offset, keeps that same
+    // half-row gap for any diameter: the centre is always half a row above
+    // the calendar top, minus half the circle's own height.
+    const diameter = rowHeight * DIAMETER_FACTOR;
+    const centerY = calendar.top - rowHeight / 2 - diameter / 2;
+
     try {
         const circle = await run(() => board.createShape({
             shape: 'circle',
             content: '<p>TODAY</p>',
             x,
-            y: calendar.top - rowHeight,
-            width: rowHeight,
-            height: rowHeight,
+            y: centerY,
+            width: diameter,
+            height: diameter,
             style: {
-                fillColor: ACCENT,
+                fillColor: CIRCLE_FILL,
                 color: '#ffffff',
                 fontFamily: 'open_sans',
-                fontSize: Math.round(rowHeight / 4),
+                fontSize: Math.round(diameter / 4),
                 borderWidth: 0,
             },
         }));
@@ -99,8 +115,8 @@ async function createIndicator(calendar, x) {
             end: { item: anchor.id, snapTo: 'top' },
             style: {
                 strokeStyle: 'dotted',
-                strokeWidth: 2,
-                strokeColor: ACCENT,
+                strokeWidth: LINE_WIDTH,
+                strokeColor: LINE_COLOR,
                 startStrokeCap: 'none',
                 endStrokeCap: 'none',
             },
@@ -115,6 +131,22 @@ async function createIndicator(calendar, x) {
                 connectorId: connector.id,
             },
         });
+
+        // Grouping happens last, and is guarded on its own, on purpose. It runs
+        // only after the AppData write above, so a failure here can never cost
+        // the ids just recorded or trigger the rollback below - the three items
+        // are already a fully working indicator without it. The Web SDK reference
+        // documents that a Group has no writable x/y, but says nothing about
+        // whether a member's x can still be set and sync()'d once it is inside a
+        // group; moveIndicator does exactly that on every tick. If grouping ever
+        // breaks that silently, the indicator would quietly stop tracking today -
+        // worse than staying ungrouped - so grouping is treated as a convenience
+        // for the user's mouse, never a precondition for the indicator to work.
+        try {
+            await run(() => board.group({ items: [circle, anchor, connector] }));
+        } catch (error) {
+            console.warn(`Timeline Builder: could not group the TODAY indicator for calendar ${entry.calendarId}`, error);
+        }
     } catch (error) {
         // Undo whatever this attempt managed to create, oldest first. Each
         // removal is isolated and best-effort: one failing to remove must not

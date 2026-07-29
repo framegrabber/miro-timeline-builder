@@ -209,12 +209,21 @@ Funktion: gegeben Jahr, heutiges Datum und Raster → gewünschte x-Position ode
 
 Der Indikator besteht aus drei Board-Items:
 
-- **Kreis**, `shape: 'circle'`, Inhalt "TODAY", Durchmesser gleich der
-  gemessenen Zeilenhöhe, mit einem Abstand von einer Zeilenhöhe über der
-  Oberkante des Kalenders
+- **Kreis**, `shape: 'circle'`, Inhalt "TODAY", pinke Füllung (`#d81b60`) mit
+  weißer Schrift, Durchmesser das 1,6-fache der gemessenen Zeilenhöhe. Der
+  Mittelpunkt liegt so, dass zwischen der Unterkante des Kreises und der
+  Oberkante des Kalenders immer eine halbe Zeilenhöhe Abstand bleibt — bei der
+  alten festen Größe (eine Zeilenhöhe) fiel das mit dem Mittelpunkt einer
+  Zeilenhöhe über der Oberkante zusammen; bei einem größeren Kreis wird der
+  Mittelpunkt aus dem Durchmesser hergeleitet, damit dieselbe halbe Zeilenhöhe
+  Luft erhalten bleibt und der größere Kreis den Kalender nicht überlappt. Die
+  Schriftgröße richtet sich proportional nach diesem Durchmesser statt nach der
+  Zeilenhöhe direkt.
 - **unsichtbares Anker-Shape** (keine Füllung, keine Umrandung), beim Anlegen
   drei Zeilenhöhen unter der Tageszeile
-- **Connector** zwischen beiden, `strokeStyle: 'dotted'`
+- **Connector** zwischen beiden, `strokeStyle: 'dotted'`, schwarz (`#000000`)
+  und mit `strokeWidth: 6` deutlich kräftiger als die übrige Linienstärke im
+  Board
 
 Die Startwerte für Abstand und Länge sind bewusst grob: sie müssen nur brauchbar
 sein, weil beides danach durch Verschieben der Items korrigierbar ist.
@@ -222,6 +231,19 @@ sein, weil beides danach durch Verschieben der Items korrigierbar ist.
 Der Connector ist der Grund für den unsichtbaren Anker: Miro erlaubt keine frei
 hängenden Verbinder, beide Enden brauchen ein Item. Dafür pflegt Miro die Linie
 danach selbst — an ihr wird nie wieder geschrieben.
+
+Nachdem alle drei Items angelegt und ihre IDs in AppData geschrieben sind,
+werden sie zusätzlich per `board.group` zu einer Gruppe zusammengefasst, rein
+als Komfort fürs Anfassen mit der Maus. Das passiert bewusst als letzter
+Schritt und in einem eigenen try/catch: die Web-SDK-Referenz dokumentiert, dass
+eine Group kein schreibbares `x`/`y` hat, lässt aber offen, ob sich ein Item
+*innerhalb* einer Gruppe weiterhin per `x` und `sync()` verschieben lässt —
+genau das tut der Updater bei jedem Tick. Schlägt das Gruppieren fehl oder
+hört das Verschieben innerhalb der Gruppe irgendwann unbemerkt auf zu
+funktionieren, bleibt der Indikator trotzdem voll funktionsfähig; nur eben
+ungruppiert. Ein Fehler beim Gruppieren wird daher nur mit `console.warn`
+vermerkt und ändert nichts an den bereits geschriebenen IDs oder am Rollback,
+der ausschließlich für Fehler beim Anlegen der drei Items selbst gilt.
 
 **Beide Shapes werden nach dem Anlegen nur noch in x geschrieben, nie in y.**
 Zieht man das untere Anker-Shape nach unten, ist die Linie ab dann länger und
