@@ -90,13 +90,28 @@ async function chooseCalendar(entries) {
         return candidates[0] ?? null;
     }
 
-    if (select.options.length !== candidates.length) {
+    // Compare the candidate set by identity, not by length: a calendar deleted
+    // and another drawn in the same session can leave the same count behind,
+    // and rebuilding only on a count change would let the dropdown keep
+    // showing stale entries while the code resolves against the new list.
+    const currentIds = Array.from(select.options, (option) => option.value);
+    const candidateIds = candidates.map((candidate) => candidate.entry.calendarId);
+    const sameCandidates = currentIds.length === candidateIds.length
+        && currentIds.every((id) => candidateIds.includes(id));
+
+    if (!sameCandidates) {
+        const previousSelection = select.value;
         select.innerHTML = '';
         for (const candidate of candidates) {
             const option = document.createElement('option');
             option.value = candidate.entry.calendarId;
             option.textContent = String(candidate.year);
             select.appendChild(option);
+        }
+        // Keep the user's choice if it is still among the candidates; otherwise
+        // the select falls back to its first option, same as before.
+        if (candidateIds.includes(previousSelection)) {
+            select.value = previousSelection;
         }
     }
     choice.classList.remove('hidden');
@@ -127,13 +142,13 @@ async function removePreviousImport(entry) {
 async function drawRows(calendar, rows) {
     const { grid, rowHeight, bottom, entry } = calendar;
 
-    const drawn = await Promise.all(rows.flatMap((row) =>
-        row.blocks.map((block) => {
+    const results = await Promise.allSettled(rows.flatMap((row) =>
+        row.blocks.map(async (block) => {
             const width = widthOfColumns(grid, block.colSpan);
             const x = xOfColumn(grid, block.colStart);
             const y = bottom + grid.padding + row.index * (rowHeight + grid.padding);
 
-            return run(() => board.createShape({
+            const shape = await run(() => board.createShape({
                 content: `<p><b>${row.employee}</b><br />${block.label}</p>`,
                 shape: 'rectangle',
                 x: x + width / 2,
@@ -146,18 +161,50 @@ async function drawRows(calendar, rows) {
                     fontSize: Math.round(rowHeight / 7),
                     borderWidth: 0,
                 },
-            })).then(async (shape) => {
+            }));
+
+            try {
                 await run(() => shape.setMetadata(METADATA_KEY, {
                     role: 'vacation',
                     calendarId: entry.calendarId,
                     employee: row.employee,
                 }));
-                return shape;
-            });
+            } catch (error) {
+                // createShape already put this one on the board, tagging it is
+                // a separate call that can fail on its own (rate limit, say).
+                // Carry the shape along on the rejection so it is not lost
+                // below - a bar missing its tag is still a bar that needs to
+                // be findable and removable by the next import.
+                if (error && typeof error === 'object') error.createdShape = shape;
+                throw error;
+            }
+
+            return shape;
         })
     ));
 
-    return drawn;
+    // Every shape actually sitting on the board, whether or not its metadata
+    // tag also made it - a rejected result can still carry one via
+    // createdShape, attached above.
+    const shapes = results
+        .map((result) => (result.status === 'fulfilled' ? result.value : result.reason?.createdShape))
+        .filter(Boolean);
+    const failure = results.find((result) => result.status === 'rejected');
+
+    if (failure) {
+        // These ids are the only handle that will ever exist on the bars that
+        // did land: there is deliberately no board-wide scan to recover them
+        // afterwards (getMetadata is one call per item, so scanning a full
+        // board would be hundreds of reads). AppData must describe what is
+        // actually on the board before this throws, or a later import can
+        // neither find nor remove them and every retry stacks more on top.
+        await updateCalendar(entry.calendarId, {
+            vacationItemIds: shapes.map((shape) => shape.id),
+        });
+        throw failure.reason;
+    }
+
+    return shapes;
 }
 
 function logStats(calendar, count) {
