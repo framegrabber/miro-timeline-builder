@@ -47,19 +47,27 @@ export function lastWorkingDayOf(year) {
  * Grid column of a date, as a signed count of working days from column 0.
  * Negative for dates before the year starts, which is how a week block whose
  * Monday sits in the previous year hangs off the left edge.
+ *
+ * Every comparison is to the day, never to the millisecond. Without the 'day'
+ * granularity dayjs compares instants: the loop variable sits at midnight, so
+ * for a `date` carrying any time of day at all, midnight of that same day
+ * counts as "before" it and the day itself gets counted - putting every
+ * afternoon one column too far right. The block builders always passed
+ * midnight and never noticed; the TODAY indicator passes dayjs() and was a day
+ * ahead all day, every day.
  */
 export function columnOf(year, date) {
     const first = firstWorkingDayOf(year);
     let column = 0;
 
-    if (date.isBefore(first)) {
-        for (let d = date; d.isBefore(first); d = d.add(1, 'day')) {
+    if (date.isBefore(first, 'day')) {
+        for (let d = date; d.isBefore(first, 'day'); d = d.add(1, 'day')) {
             if (isWorkingDay(d)) column--;
         }
         return column;
     }
 
-    for (let d = first; d.isBefore(date); d = d.add(1, 'day')) {
+    for (let d = first; d.isBefore(date, 'day'); d = d.add(1, 'day')) {
         if (isWorkingDay(d)) column++;
     }
     return column;

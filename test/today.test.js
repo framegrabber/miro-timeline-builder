@@ -105,3 +105,15 @@ test('a Sunday trailing 2028 returns null while Friday returns the last column',
     assert.equal(columnForToday(2028, dayjs('2028-12-29')), expectedFridayColumn);
     assert.equal(columnForToday(2028, dayjs('2028-12-31')), null, 'Sunday after year end');
 });
+
+// The bug this pins down was live on a real board: the updater calls
+// columnForToday with dayjs(), and every other test here passes midnight, so
+// nothing caught that the underlying comparison was to the instant rather than
+// to the day. From one second past midnight the indicator sat on tomorrow.
+test('the indicator does not move with the clock', () => {
+    const midnight = columnForToday(2026, dayjs('2026-07-29'));
+
+    for (const time of ['00:00:01', '09:30:00', '14:32:11', '23:59:59']) {
+        assert.equal(columnForToday(2026, dayjs(`2026-07-29T${time}`)), midnight, `at ${time}`);
+    }
+});

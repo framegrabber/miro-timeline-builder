@@ -367,3 +367,33 @@ test('gridFrom refuses measurements that cannot describe a grid', () => {
     // is worse than no answer.
     assert.equal(gridFrom({ ...sane, lastCenterX: sane.firstCenterX + 261 * 500 }), null, 'pitch far beyond one cell');
 });
+
+// --- time of day must not shift a column -------------------------------------
+
+// Every other test in this file hands columnOf a midnight dayjs, which is why
+// none of them caught this: dayjs compares instants unless told otherwise, the
+// loop variable sits at midnight, and so any date carrying a clock time counted
+// its own day and came out one column too far right. The TODAY indicator passes
+// dayjs() and sat on tomorrow's column from 00:00:01 onwards.
+test('columnOf counts days, not milliseconds', () => {
+    for (const year of YEARS) {
+        const midnight = dayjs(`${year}-07-15`);
+
+        for (const time of ['00:00:01', '09:30:00', '14:32:11', '23:59:59']) {
+            assert.equal(
+                columnOf(year, dayjs(`${year}-07-15T${time}`)),
+                columnOf(year, midnight),
+                `${year} at ${time}`
+            );
+        }
+    }
+});
+
+test('the time of day does not shift a column before the year either', () => {
+    // The negative branch has its own loop and its own comparison.
+    assert.equal(
+        columnOf(2026, dayjs('2025-12-30T14:32:11')),
+        columnOf(2026, dayjs('2025-12-30'))
+    );
+    assert.equal(columnOf(2026, dayjs('2025-12-31T23:59:59')), -1, 'the last working day before the year');
+});
