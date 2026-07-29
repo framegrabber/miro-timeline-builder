@@ -16,7 +16,7 @@
 - **Jeder Board-Aufruf läuft über den Limiter** aus `src/rateLimit.js`. Miro zählt Credits pro Nutzersitzung, nicht pro Modul — zwei Limiter würden beide das volle Budget annehmen.
 - **Reine Module importieren niemals `src/board.js`.** `calendar.js`, `today.js` (Rechenteil), `vacation.js` und `colors.js` müssen unter `node --test` ohne Browser laufen.
 - **Tests laufen mit `npm test`** (`node --test "test/*.test.js"`). Alle bestehenden 31 Tests müssen nach jedem Task grün bleiben.
-- **Kommentare auf Englisch**, wie im übrigen `src/`. Nutzersichtbare Texte im Panel auf Deutsch.
+- **Kommentare auf Englisch**, wie im übrigen `src/`. Nutzersichtbare Texte im Panel auf Englisch.
 - **Commit-Messages** im Stil des Repos: englisch, dritte Person Präsens, kleingeschrieben, ohne Präfix — z. B. `adds gridFrom to rebuild the grid from two measured cells`. Kein `feat:`/`fix:`.
 - **`vacationDuration` und Konsorten** sind die Feldnamen, die `SAPVac/sapvac.js` erzeugt: `employeeName`, `vacationStartDate`, `vacationEndDate`, `vacationDuration`, `vacationPeriod`. Das Format wird nicht geändert.
 - **Metadaten-Schlüssel** ist überall `'timelineBuilder'`. **AppData-Schlüssel** ist überall `'calendars'`.
@@ -32,8 +32,8 @@
 | `src/today.js` | NEU. `columnForToday` (rein) plus Lebenszyklus der Indikator-Items | teilweise |
 | `src/vacation.js` | NEU. SAP-JSON parsen und in Spaltenkoordinaten planen | ja |
 | `src/colors.js` | NEU. `stringToColor`, aus `SAPVac/drawshapes.js` übernommen | ja |
-| `src/import.js` | NEU. Panel-Ansicht „Urlaub" | nein |
-| `src/app.js` | Panel-Ansicht „Kalender" plus Tab-Umschaltung | nein |
+| `src/import.js` | NEU. Panel-Ansicht „Vacation" | nein |
+| `src/app.js` | Panel-Ansicht „Calendar" plus Tab-Umschaltung | nein |
 | `src/index.js` | headless: `icon:click` und der TODAY-Updater | nein |
 | `app.html` | Panel mit zwei Tabs | — |
 
@@ -695,7 +695,7 @@ git commit -m "adds the column lookup for the TODAY indicator"
 An die Datei anhängen:
 
 ```js
-import { board, run } from './board.js';
+import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar } from './anchors.js';
 
@@ -708,10 +708,15 @@ const NUDGE = 0.5;
 /**
  * Brings the indicator of one calendar in line with today.
  *
- * Reads before it writes, on purpose: the headless iframe runs once per user,
- * so five open sessions mean five updaters. Comparing first makes the normal
- * case zero writes, and in a collision every updater writes the same value.
- * The state is idempotent rather than coordinated.
+ * Reads before it writes, on purpose - but that guarantee only covers the move
+ * path. moveIndicator compares the measured x against the wanted one and only
+ * writes on a real difference, so five open sessions (one updater each, per
+ * the headless iframe) converge on the same value with the normal case being
+ * zero writes. createIndicator has no such guard: two sessions opening a board
+ * whose indicator does not exist yet can both see `circleId` missing, both
+ * pass the check above, and both create a full triple. That race is accepted,
+ * not fixed - see the design doc's accepted costs - because closing it would
+ * need a compare-and-swap that AppData does not offer.
  */
 export async function syncIndicator(calendar, today) {
     const { entry, grid } = calendar;
@@ -733,57 +738,98 @@ export async function syncIndicator(calendar, today) {
     await moveIndicator(entry, x);
 }
 
+/**
+ * Creates the circle, the anchor and the connector, then records all three in
+ * AppData in one write - or none of them, if anything along the way fails.
+ *
+ * This is deliberately all-or-nothing. The updater ticks every 10 minutes in
+ * the headless iframe of every open board session, and it decides whether an
+ * indicator already exists purely by checking `circleId` in AppData. A
+ * half-created indicator (say the circle and anchor exist but the connector
+ * failed) would still read as "missing" on the next tick, so createIndicator
+ * would run again and stack a second circle/anchor pair on top of the first -
+ * and again on the tick after that, for as long as the failure persists. The
+ * anchor shape has no fill and no border, so these orphans would be almost
+ * impossible to notice or clean up by hand. Rolling back whatever this
+ * attempt created, before the error propagates, keeps a failed attempt from
+ * ever being distinguishable - on the board or in AppData - from an attempt
+ * that never started.
+ */
 async function createIndicator(calendar, x) {
     const { entry, rowHeight } = calendar;
+    const created = [];
 
-    const circle = await run(() => board.createShape({
-        shape: 'circle',
-        content: '<p>TODAY</p>',
-        x,
-        y: calendar.top - rowHeight,
-        width: rowHeight,
-        height: rowHeight,
-        style: {
-            fillColor: ACCENT,
-            color: '#ffffff',
-            fontFamily: 'open_sans',
-            fontSize: Math.round(rowHeight / 4),
-            borderWidth: 0,
-        },
-    }));
+    try {
+        const circle = await run(() => board.createShape({
+            shape: 'circle',
+            content: '<p>TODAY</p>',
+            x,
+            y: calendar.top - rowHeight,
+            width: rowHeight,
+            height: rowHeight,
+            style: {
+                fillColor: ACCENT,
+                color: '#ffffff',
+                fontFamily: 'open_sans',
+                fontSize: Math.round(rowHeight / 4),
+                borderWidth: 0,
+            },
+        }));
+        created.push(circle);
 
-    // Miro refuses loose connectors, so the dotted line needs something to end
-    // on. This is that something: present, invisible, and draggable.
-    const anchor = await run(() => board.createShape({
-        shape: 'rectangle',
-        x,
-        y: calendar.bottom + 3 * rowHeight,
-        width: 8,
-        height: 8,
-        style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
-    }));
+        // Miro refuses loose connectors, so the dotted line needs something to end
+        // on. This is that something: present, invisible, and draggable.
+        const anchor = await run(() => board.createShape({
+            shape: 'rectangle',
+            x,
+            y: calendar.bottom + 3 * rowHeight,
+            width: 8,
+            height: 8,
+            style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
+        }));
+        created.push(anchor);
 
-    const connector = await run(() => board.createConnector({
-        shape: 'straight',
-        start: { item: circle.id, snapTo: 'bottom' },
-        end: { item: anchor.id, snapTo: 'top' },
-        style: {
-            strokeStyle: 'dotted',
-            strokeWidth: 2,
-            strokeColor: ACCENT,
-            startStrokeCap: 'none',
-            endStrokeCap: 'none',
-        },
-    }));
+        const connector = await run(() => board.createConnector({
+            shape: 'straight',
+            start: { item: circle.id, snapTo: 'bottom' },
+            end: { item: anchor.id, snapTo: 'top' },
+            style: {
+                strokeStyle: 'dotted',
+                strokeWidth: 2,
+                strokeColor: ACCENT,
+                startStrokeCap: 'none',
+                endStrokeCap: 'none',
+            },
+        }));
+        created.push(connector);
 
-    await updateCalendar(entry.calendarId, {
-        indicator: {
-            ...entry.indicator,
-            circleId: circle.id,
-            anchorId: anchor.id,
-            connectorId: connector.id,
-        },
-    });
+        await updateCalendar(entry.calendarId, {
+            indicator: {
+                ...entry.indicator,
+                circleId: circle.id,
+                anchorId: anchor.id,
+                connectorId: connector.id,
+            },
+        });
+    } catch (error) {
+        // Undo whatever this attempt managed to create, oldest first. Each
+        // removal is isolated and best-effort: one failing to remove must not
+        // stop the others from being tried, and a cleanup failure must never
+        // replace or hide the original error below.
+        for (const item of created) {
+            try {
+                await run(() => board.remove(item));
+            } catch {
+                // If removal also fails, this item is genuinely orphaned. That
+                // residual risk is accepted rather than designed away - a
+                // decoration does not warrant a reconciliation mechanism to
+                // hunt down doubly-failed cleanups.
+            }
+        }
+
+        console.error(`Timeline Builder: failed to create the TODAY indicator for calendar ${entry.calendarId}, rolled back`, error);
+        throw error;
+    }
 }
 
 /**
@@ -800,12 +846,37 @@ async function moveIndicator(entry, x) {
         let item;
         try {
             item = await run(() => board.getById(id));
-        } catch {
-            // Someone deleted a piece of it. Forget the ids so the next tick
-            // builds a fresh indicator.
-            await updateCalendar(entry.calendarId, {
-                indicator: { ...entry.indicator, circleId: null, anchorId: null, connectorId: null },
-            });
+        } catch (error) {
+            // getById throwing after run() exhausts its retries on a rate
+            // limit is not the same as the item being gone - the call never
+            // completed, so the item's real state is unknown. Treating it as
+            // gone here would call removeIndicator, whose own board.remove
+            // calls would hit the same limit and be swallowed by its
+            // best-effort catches, so circleId/anchorId/connectorId would be
+            // cleared in AppData while the shapes stayed on the board. The
+            // next tick would then see no indicator at all and draw a second
+            // circle, anchor and connector beside the orphaned first set, and
+            // it would silently discard any manual repositioning the user did
+            // - the documented way to adjust the indicator's height and the
+            // connector's length. So a rate limit must leave the ids
+            // untouched and just skip this pass, exactly like anchors.js's
+            // measure() does for the same failure.
+            if (isRateLimitError(error)) {
+                console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
+                return;
+            }
+
+            // Someone deleted a piece of it - but not necessarily all of it.
+            // Simply forgetting the ids here would abandon whatever survives
+            // (the circle, say, if only the anchor was deleted) as an orphan
+            // that AppData no longer points to and the next tick cannot see,
+            // so createIndicator would draw a second circle/anchor/connector
+            // right beside it. The anchor shape has no fill and no border, so
+            // that orphan could never be found or cleaned up by hand.
+            // removeIndicator already tears down all three ids and tolerates
+            // each one being gone, which is exactly what a broken indicator
+            // needs, so reuse it instead of writing a second teardown.
+            await removeIndicator(entry);
             return;
         }
 
@@ -840,6 +911,7 @@ async function removeIndicator(entry) {
 ```js
 import dayjs from 'dayjs';
 
+import { board } from './board.js';
 import { findCalendars } from './anchors.js';
 import { syncIndicator } from './today.js';
 
@@ -849,8 +921,12 @@ import { syncIndicator } from './today.js';
 const TICK_MS = 10 * 60 * 1000;
 
 export async function init() {
-  miro.board.ui.on('icon:click', async () => {
-    await miro.board.ui.openPanel({url: 'app.html'});
+  // Not a credited board call, just an event subscription, so it does not go
+  // through run(). It still goes through the shared `board` export rather
+  // than the bare `miro` global, so this file has exactly one way of reaching
+  // the SDK, same as every other module here.
+  board.ui.on('icon:click', async () => {
+    await board.ui.openPanel({url: 'app.html'});
   });
 
   await tick();
@@ -860,13 +936,25 @@ export async function init() {
 // Never throws. This runs in every board viewer's session; one broken calendar
 // entry must not take somebody's board down with it.
 async function tick() {
+  let calendars;
   try {
-    const today = dayjs();
-    for (const calendar of await findCalendars()) {
-      await syncIndicator(calendar, today);
-    }
+    calendars = await findCalendars();
   } catch (error) {
+    // Nothing to iterate, so this is one failure for the whole tick.
     console.error('Timeline Builder: could not update the TODAY indicator', error);
+    return;
+  }
+
+  const today = dayjs();
+  for (const calendar of calendars) {
+    try {
+      await syncIndicator(calendar, today);
+    } catch (error) {
+      // Isolated per calendar: if this one fails deterministically (a style
+      // value Miro rejects, say), it must not starve every other calendar on
+      // the board of its update, tick after tick, forever.
+      console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
+    }
   }
 }
 
@@ -876,7 +964,7 @@ init();
 - [ ] **Step 3: Verify the suite still passes**
 
 Run: `npm test`
-Expected: 39 Tests PASS. `today.js` importiert jetzt `board.js`, aber `test/today.test.js` importiert nur `columnForToday` — **prüfen, dass der Test weiterhin grün ist**. Läuft er in `window is not defined`, hat der statische Import von `board.js` das reine Modul verunreinigt; dann `columnForToday` in eine eigene Datei `src/todayColumn.js` ziehen, die nichts importiert außer `calendar.js`, und `today.js` daraus importieren lassen. Der Test importiert dann `../src/todayColumn.js`.
+Expected: 42 Tests PASS. `today.js` importiert jetzt `board.js`, aber `test/today.test.js` importiert nur `columnForToday` — **prüfen, dass der Test weiterhin grün ist**. Läuft er in `window is not defined`, hat der statische Import von `board.js` das reine Modul verunreinigt; dann `columnForToday` in eine eigene Datei `src/todayColumn.js` ziehen, die nichts importiert außer `calendar.js`, und `today.js` daraus importieren lassen. Der Test importiert dann `../src/todayColumn.js`.
 
 - [ ] **Step 4: Manual verification on a real board**
 
@@ -918,7 +1006,7 @@ Im Fieldset „Shape Settings" direkt vor `</fieldset>` einfügen:
                     <div class="form-group form-group-small toggle-container">
                         <label class="toggle">
                             <input type="checkbox" id="drawTodayIndicator" tabindex="0" checked/>
-                            <span>TODAY-Indikator</span>
+                            <span>Draw Today Indicator</span>
                         </label>
                     </div>
 ```
@@ -946,7 +1034,7 @@ export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = tr
 - [ ] **Step 4: Verify**
 
 Run: `npm test && npm run build`
-Expected: 39 Tests PASS, Build sauber.
+Expected: 42 Tests PASS, Build sauber.
 
 Auf dem Board: Kalender mit abgewählter Checkbox zeichnen, Board neu laden — es erscheint kein Indikator. `(await miro.board.getAppData('calendars')).at(-1).indicator.enabled` muss `false` sein.
 
@@ -1156,7 +1244,7 @@ export function stringToColor(str) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS, vier neue Tests (43 insgesamt).
+Expected: PASS, vier neue Tests (46 insgesamt).
 
 - [ ] **Step 5: Commit**
 
@@ -1207,7 +1295,7 @@ function entry(employeeName, vacationStartDate, vacationEndDate, extra = {}) {
 test('parseVacations rejects input that is not a list of entries', () => {
     assert.deepEqual(parseVacations('not json').entries, []);
     assert.match(parseVacations('not json').problems[0], /JSON/);
-    assert.match(parseVacations('{"a":1}').problems[0], /Liste/);
+    assert.match(parseVacations('{"a":1}').problems[0], /list/);
 });
 
 test('parseVacations reports the entries it cannot use, and keeps the rest', () => {
@@ -1223,8 +1311,8 @@ test('parseVacations reports the entries it cannot use, and keeps the rest', () 
     assert.equal(entries.length, 1);
     assert.equal(entries[0].employee, 'Meyer, Anna');
     assert.equal(problems.length, 3);
-    assert.match(problems[1], /unlesbares Datum/);
-    assert.match(problems[2], /Ende liegt vor dem Start/);
+    assert.match(problems[1], /unreadable date/);
+    assert.match(problems[2], /end is before the start/);
 });
 
 test('a span is counted with the same function that drew the day cells', () => {
@@ -1256,7 +1344,7 @@ test('a period lying entirely on a weekend is reported, not drawn', () => {
     const { rows, problems } = planVacations(entries, 2026);
 
     assert.equal(rows.length, 0);
-    assert.match(problems[0], /kein Arbeitstag/);
+    assert.match(problems[0], /no working day/);
 });
 
 test('a mismatch against the duration SAP reported is flagged', () => {
@@ -1264,7 +1352,7 @@ test('a mismatch against the duration SAP reported is flagged', () => {
     const { problems } = planVacations(parseVacations(text).entries, 2026);
 
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /SAP meldet 4, gerechnet 5/);
+    assert.match(problems[0], /SAP reports 4, calculated 5/);
 });
 
 test('entries outside the drawn year are skipped and listed', () => {
@@ -1306,6 +1394,31 @@ test('rows are alphabetical and independent of the input order', () => {
     assert.deepEqual(plan(forwards).rows.map((row) => row.employee), ['Ali, Dilan', 'Meyer, Anna']);
 });
 
+test('blocks tied on colStart still come out in the same order regardless of input order', () => {
+    // 2026-07-25 Sat and 2026-07-26 Sun both pull forward to Mon 2026-07-27
+    // (nextWorkingDay), so these two periods for the same employee land on the
+    // same colStart. Array.sort is stable, so a comparator that only looks at
+    // colStart would leave the tie in whatever order the blocks arrived in -
+    // silently letting the input order back in through the one place it was
+    // supposed to be impossible. colSpan (3 vs 5) must break the tie instead.
+    const text = (list) => JSON.stringify(list);
+    const shortFirst = [
+        entry('Meyer, Anna', '2026-07-25', '2026-07-29'),
+        entry('Meyer, Anna', '2026-07-26', '2026-07-31'),
+    ];
+    const longFirst = [shortFirst[1], shortFirst[0]];
+
+    const plan = (list) => planVacations(parseVacations(text(list)).entries, 2026);
+
+    const blocksOf = (list) => plan(list).rows[0].blocks.map(({ colStart, colSpan }) => ({ colStart, colSpan }));
+
+    assert.deepEqual(blocksOf(shortFirst), [
+        { colStart: columnOf(2026, dayjs('2026-07-27')), colSpan: 3 },
+        { colStart: columnOf(2026, dayjs('2026-07-27')), colSpan: 5 },
+    ]);
+    assert.deepEqual(blocksOf(shortFirst), blocksOf(longFirst));
+});
+
 test('yearsIn lists the years the data touches', () => {
     const text = JSON.stringify([
         entry('Meyer, Anna', '2026-12-28', '2027-01-08'),
@@ -1344,11 +1457,11 @@ export function parseVacations(text) {
     try {
         raw = JSON.parse(text);
     } catch {
-        return { entries: [], problems: ['Das ist kein gültiges JSON.'] };
+        return { entries: [], problems: ['That is not valid JSON.'] };
     }
 
     if (!Array.isArray(raw)) {
-        return { entries: [], problems: ['Erwartet wird eine Liste von Urlaubseinträgen.'] };
+        return { entries: [], problems: ['Expected a list of vacation entries.'] };
     }
 
     const entries = [];
@@ -1357,22 +1470,25 @@ export function parseVacations(text) {
     raw.forEach((item, index) => {
         const employee = item?.employeeName;
         const label = item?.vacationPeriod ?? '';
-        const where = `Eintrag ${index + 1}`;
+        const where = `Entry ${index + 1}`;
 
         if (typeof employee !== 'string' || employee === '') {
-            problems.push(`${where}: kein employeeName.`);
+            problems.push(`${where}: no employeeName.`);
             return;
         }
 
         const start = dayjs(item?.vacationStartDate);
+        // A missing or empty vacationEndDate is treated as a same-day period,
+        // not a problem: the scraper always sends both dates, so this only
+        // ever happens with a period that starts and ends on the same day.
         const end = item?.vacationEndDate ? dayjs(item.vacationEndDate) : start;
 
         if (!start.isValid() || !end.isValid()) {
-            problems.push(`${where} (${employee}): unlesbares Datum.`);
+            problems.push(`${where} (${employee}): unreadable date.`);
             return;
         }
         if (end.isBefore(start, 'day')) {
-            problems.push(`${where} (${employee}): Ende liegt vor dem Start.`);
+            problems.push(`${where} (${employee}): end is before the start.`);
             return;
         }
 
@@ -1419,7 +1535,7 @@ export function planVacations(entries, year) {
         const end = previousWorkingDay(entry.end);
 
         if (end.isBefore(start, 'day')) {
-            problems.push(`${where}: enthält keinen Arbeitstag.`);
+            problems.push(`${where}: contains no working day.`);
             continue;
         }
 
@@ -1427,7 +1543,7 @@ export function planVacations(entries, year) {
         const rawEnd = columnOf(year, end);
 
         if (rawEnd < 0 || rawStart > columns - 1) {
-            problems.push(`${where}: liegt nicht in ${year}.`);
+            problems.push(`${where}: is not in ${year}.`);
             continue;
         }
 
@@ -1439,7 +1555,7 @@ export function planVacations(entries, year) {
         // past New Year is legitimately shorter on this calendar.
         const clipped = rawStart < colStart || rawEnd > colEnd;
         if (!clipped && entry.duration !== null && colSpan !== entry.duration) {
-            problems.push(`${where}: SAP meldet ${entry.duration}, gerechnet ${colSpan}.`);
+            problems.push(`${where}: SAP reports ${entry.duration}, calculated ${colSpan}.`);
         }
 
         placed.push({ employee: entry.employee, colStart, colSpan, label: entry.label });
@@ -1450,9 +1566,16 @@ export function planVacations(entries, year) {
         employee,
         index,
         color: stringToColor(employee),
+        // colStart alone is not a total order: two periods pulled onto the
+        // same Monday by nextWorkingDay share a colStart, and Array.sort is
+        // stable, so ties would fall back to input order - exactly what this
+        // sort exists to remove. colSpan and then label break every tie that
+        // colStart cannot; once all three agree the blocks are identical in
+        // content, so no order is observable.
         blocks: placed
             .filter((item) => item.employee === employee)
-            .map(({ colStart, colSpan, label }) => ({ colStart, colSpan, label })),
+            .map(({ colStart, colSpan, label }) => ({ colStart, colSpan, label }))
+            .sort((a, b) => a.colStart - b.colStart || a.colSpan - b.colSpan || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)),
     }));
 
     return { rows, problems };
@@ -1462,7 +1585,7 @@ export function planVacations(entries, year) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS, elf neue Tests (54 insgesamt).
+Expected: PASS, zwölf neue Tests (58 insgesamt).
 
 - [ ] **Step 5: Commit**
 
@@ -1493,10 +1616,10 @@ Direkt hinter `<div class="scrollable-container container">` die Tab-Leiste einf
             <div class="tabs">
                 <div class="tabs-header-list">
                     <div class="tab tab-active" data-view="calendar" role="tab" tabindex="0">
-                        <div class="tab-text">Kalender</div>
+                        <div class="tab-text">Calendar</div>
                     </div>
                     <div class="tab" data-view="import" role="tab" tabindex="0">
-                        <div class="tab-text">Urlaub</div>
+                        <div class="tab-text">Vacation</div>
                     </div>
                 </div>
             </div>
@@ -1509,20 +1632,20 @@ Direkt hinter `<div class="scrollable-container container">` die Tab-Leiste einf
 
             <div id="view-import" class="hidden">
                 <fieldset class="section">
-                    <div class="h4 section-title">Urlaubsdaten</div>
+                    <div class="h4 section-title">Vacation Data</div>
                     <div class="form-group form-group-small">
-                        <label for="vacationJson">JSON aus dem SAP-Bookmarklet einfügen</label>
+                        <label for="vacationJson">Paste JSON from the SAP bookmarklet</label>
                         <textarea class="textarea" id="vacationJson" rows="8"
                                   placeholder='[{"employeeName": "...", "vacationStartDate": "2026-03-02", ...}]'></textarea>
                     </div>
                     <div class="form-group form-group-small hidden" id="calendarChoice">
-                        <label for="targetCalendar">In welchen Kalender?</label>
+                        <label for="targetCalendar">Which calendar?</label>
                         <select class="select select-small" id="targetCalendar"></select>
                     </div>
                 </fieldset>
 
                 <div class="footer-stack">
-                    <button type="button" id="importSubmit" class="button button-primary button-small button-wide">Urlaub zeichnen</button>
+                    <button type="button" id="importSubmit" class="button button-primary button-small button-wide">Draw Vacation</button>
                 </div>
                 <p id="importStatus" class="p-small draw-status hidden" role="status" aria-live="polite"></p>
                 <ul id="importProblems" class="p-small import-problems hidden"></ul>
@@ -1567,7 +1690,7 @@ function showView(name) {
 - [ ] **Step 4: Verify**
 
 Run: `npm test && npm run build`
-Expected: 54 Tests PASS, Build sauber.
+Expected: 58 Tests PASS, Build sauber.
 
 Im Panel: beide Tabs schalten um, das Kalenderformular funktioniert unverändert, der Urlaub-Tab zeigt Textarea und Button (der noch nichts tut).
 
@@ -1605,7 +1728,7 @@ export function initImportView() {
 }
 
 async function runImport() {
-    setStatus('Daten werden gelesen...', true);
+    setStatus('Reading data...', true);
     showProblems([]);
 
     const { entries, problems: parseProblems } = parseVacations(
@@ -1613,14 +1736,14 @@ async function runImport() {
     );
 
     if (entries.length === 0) {
-        setStatus('Es wurde nichts gezeichnet.', false);
+        setStatus('Nothing was drawn.', false);
         showProblems(parseProblems);
         return;
     }
 
     const calendar = await chooseCalendar(entries);
     if (!calendar) {
-        setStatus('Auf diesem Board gibt es keinen Kalender für diese Daten.', false);
+        setStatus('This board has no calendar for this data.', false);
         showProblems(parseProblems);
         return;
     }
@@ -1629,7 +1752,7 @@ async function runImport() {
     const problems = [...parseProblems, ...planProblems];
 
     if (rows.length === 0) {
-        setStatus('Es wurde nichts gezeichnet.', false);
+        setStatus('Nothing was drawn.', false);
         showProblems(problems);
         return;
     }
@@ -1637,7 +1760,7 @@ async function runImport() {
     try {
         await removePreviousImport(calendar.entry);
 
-        setStatus('Urlaub wird gezeichnet...', true);
+        setStatus('Drawing vacation...', true);
         const shapes = await drawRows(calendar, rows);
 
         await updateCalendar(calendar.entry.calendarId, {
@@ -1651,7 +1774,7 @@ async function runImport() {
         if (problems.length > 0) {
             // Keep the panel open: a half-understood import is exactly the
             // thing you want to see rather than have vanish.
-            setStatus(`${shapes.length} Balken gezeichnet, mit Hinweisen:`, false);
+            setStatus(`${shapes.length} bars drawn, with notes:`, false);
             showProblems(problems);
             return;
         }
@@ -1685,13 +1808,28 @@ async function chooseCalendar(entries) {
         return candidates[0] ?? null;
     }
 
-    if (select.options.length !== candidates.length) {
+    // Compare the candidate set by identity, not by length: a calendar deleted
+    // and another drawn in the same session can leave the same count behind,
+    // and rebuilding only on a count change would let the dropdown keep
+    // showing stale entries while the code resolves against the new list.
+    const currentIds = Array.from(select.options, (option) => option.value);
+    const candidateIds = candidates.map((candidate) => candidate.entry.calendarId);
+    const sameCandidates = currentIds.length === candidateIds.length
+        && currentIds.every((id) => candidateIds.includes(id));
+
+    if (!sameCandidates) {
+        const previousSelection = select.value;
         select.innerHTML = '';
         for (const candidate of candidates) {
             const option = document.createElement('option');
             option.value = candidate.entry.calendarId;
             option.textContent = String(candidate.year);
             select.appendChild(option);
+        }
+        // Keep the user's choice if it is still among the candidates; otherwise
+        // the select falls back to its first option, same as before.
+        if (candidateIds.includes(previousSelection)) {
+            select.value = previousSelection;
         }
     }
     choice.classList.remove('hidden');
@@ -1703,18 +1841,34 @@ async function removePreviousImport(entry) {
     const ids = entry.vacationItemIds ?? [];
     if (ids.length === 0) return;
 
-    setStatus('Vorheriger Import wird entfernt...', true);
+    setStatus('Removing previous import...', true);
+
+    // A per-id failure here is not one thing. getById or remove throwing
+    // after run() exhausts its retries on a rate limit means the call never
+    // completed - the bar's fate is unknown, not decided - while any other
+    // throw means the bar is genuinely gone (deleted by hand, by undo, or
+    // just removed by the call above). Collapsing both into "gone", as this
+    // used to, cleared vacationItemIds unconditionally: a bar that only hit a
+    // transient rate limit was left on the board with its one handle
+    // discarded, so every later import stacked a duplicate on top of it.
+    // Keeping the rate-limited ids here, and only ever dropping ids that are
+    // confirmed gone or were actually removed, is the same distinction
+    // anchors.js's measure() makes for the equivalent failure.
+    const remaining = [];
 
     for (const id of ids) {
         try {
             const item = await run(() => board.getById(id));
             await run(() => board.remove(item));
-        } catch {
-            // Already gone, by hand or by undo.
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                remaining.push(id);
+            }
+            // else: already gone, by hand or by undo - drop it.
         }
     }
 
-    await updateCalendar(entry.calendarId, { vacationItemIds: [] });
+    await updateCalendar(entry.calendarId, { vacationItemIds: remaining });
 }
 
 // Bars sit directly under the day row and take the calendar's own measured row
@@ -1722,13 +1876,20 @@ async function removePreviousImport(entry) {
 async function drawRows(calendar, rows) {
     const { grid, rowHeight, bottom, entry } = calendar;
 
-    const drawn = await Promise.all(rows.flatMap((row) =>
-        row.blocks.map((block) => {
+    const results = await Promise.allSettled(rows.flatMap((row) =>
+        row.blocks.map(async (block) => {
             const width = widthOfColumns(grid, block.colSpan);
             const x = xOfColumn(grid, block.colStart);
             const y = bottom + grid.padding + row.index * (rowHeight + grid.padding);
 
-            return run(() => board.createShape({
+            // employee and label are interpolated into HTML unescaped. Accepted
+            // deliberately, not an oversight: this data comes from the user's
+            // own SAP export, not from a third party, and it lands in Miro's
+            // rich-text renderer rather than this app's DOM, so there is no
+            // injection surface to guard against here. It is a new pattern in
+            // this codebase, though - treat it as a one-off exception, not a
+            // precedent for the next place that interpolates user-facing text.
+            const shape = await run(() => board.createShape({
                 content: `<p><b>${row.employee}</b><br />${block.label}</p>`,
                 shape: 'rectangle',
                 x: x + width / 2,
@@ -1741,18 +1902,50 @@ async function drawRows(calendar, rows) {
                     fontSize: Math.round(rowHeight / 7),
                     borderWidth: 0,
                 },
-            })).then(async (shape) => {
+            }));
+
+            try {
                 await run(() => shape.setMetadata(METADATA_KEY, {
                     role: 'vacation',
                     calendarId: entry.calendarId,
                     employee: row.employee,
                 }));
-                return shape;
-            });
+            } catch (error) {
+                // createShape already put this one on the board, tagging it is
+                // a separate call that can fail on its own (rate limit, say).
+                // Carry the shape along on the rejection so it is not lost
+                // below - a bar missing its tag is still a bar that needs to
+                // be findable and removable by the next import.
+                if (error && typeof error === 'object') error.createdShape = shape;
+                throw error;
+            }
+
+            return shape;
         })
     ));
 
-    return drawn;
+    // Every shape actually sitting on the board, whether or not its metadata
+    // tag also made it - a rejected result can still carry one via
+    // createdShape, attached above.
+    const shapes = results
+        .map((result) => (result.status === 'fulfilled' ? result.value : result.reason?.createdShape))
+        .filter(Boolean);
+    const failure = results.find((result) => result.status === 'rejected');
+
+    if (failure) {
+        // These ids are the only handle that will ever exist on the bars that
+        // did land: there is deliberately no board-wide scan to recover them
+        // afterwards (getMetadata is one call per item, so scanning a full
+        // board would be hundreds of reads). AppData must describe what is
+        // actually on the board before this throws, or a later import can
+        // neither find nor remove them and every retry stacks more on top.
+        await updateCalendar(entry.calendarId, {
+            vacationItemIds: shapes.map((shape) => shape.id),
+        });
+        throw failure.reason;
+    }
+
+    return shapes;
 }
 
 function logStats(calendar, count) {
@@ -1760,16 +1953,16 @@ function logStats(calendar, count) {
     if (!stats) return;
 
     console.log(
-        `Timeline Builder - Urlaubsimport ${calendar.year}: ${count} Balken in ` +
+        `Timeline Builder - vacation import ${calendar.year}: ${count} bars in ` +
         `${(stats.wallClockMs / 1000).toFixed(1)} s, ${stats.credits.toLocaleString('en-US')} Credits`
     );
 }
 
 function describeFailure(error) {
     if (isRateLimitError(error)) {
-        return 'Miros Rate Limit ist erschöpft. Bitte eine Minute warten und erneut versuchen.';
+        return 'Rate limit reached. Wait a minute and try again.';
     }
-    return `Import fehlgeschlagen: ${error?.message ?? error}`;
+    return `Import failed: ${error?.message ?? error}`;
 }
 
 function setStatus(message, busy) {
@@ -1811,7 +2004,7 @@ initImportView();
 - [ ] **Step 3: Verify the build**
 
 Run: `npm test && npm run build`
-Expected: 54 Tests PASS, Build sauber.
+Expected: 58 Tests PASS, Build sauber.
 
 - [ ] **Step 4: Manual verification on a real board**
 
@@ -1828,7 +2021,7 @@ Erwartung:
 2. Die Balken sind **pixelgenau** an den Tageszellen ausgerichtet — das ist der eigentliche Prüfpunkt. Der März-Balken deckt exakt Mo 02.03. bis Fr 06.03. ab.
 3. Der Juli-Balken beginnt an Montag dem 27.07., nicht am Samstag.
 4. Der Dezember-Balken endet an der letzten Spalte des Jahres, ohne Warnung.
-5. Erneut auf „Urlaub zeichnen" klicken: es entstehen **keine** Duplikate, die alten Balken verschwinden zuerst.
+5. Erneut auf „Draw Vacation" klicken: es entstehen **keine** Duplikate, die alten Balken verschwinden zuerst.
 6. Den Kalender verschieben und erneut importieren: die Balken landen wieder korrekt unter ihm.
 
 - [ ] **Step 5: Commit**
@@ -1883,7 +2076,7 @@ Bookmarklets rund um den SAP-Teamkalender.
 
 `drawshapes.js` gibt es nicht mehr. Das Zeichnen ist in das Miro-Plugin
 [miro-timeline-builder](https://github.com/framegrabber/miro-timeline-builder)
-umgezogen, Tab „Urlaub".
+umgezogen, Tab „Vacation".
 
 Der Grund ist nicht Bequemlichkeit: Als Bookmarklet konnte der Zeichencode die
 Metadaten des Plugins nicht lesen und musste die Balken deshalb relativ
@@ -1934,7 +2127,7 @@ cd /Users/felix/Documents/code/SAPVac && gh release view v1.2.0
 
 # Abnahme der Gesamtstrecke
 
-- [ ] `npm test` in `miro-timeline-builder`: 54 Tests grün
+- [ ] `npm test` in `miro-timeline-builder`: 58 Tests grün
 - [ ] `npm run build`: sauber
 - [ ] Auf einem frischen Board: Kalender 2026 zeichnen → TODAY-Indikator erscheint auf dem heutigen Tag
 - [ ] Kalender verschieben und skalieren, Board neu laden → Indikator sitzt weiterhin richtig

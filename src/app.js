@@ -11,6 +11,7 @@ import {
 } from './calendar.js';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
+import { initImportView } from './import.js';
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -246,7 +247,7 @@ async function drawCalendar() {
         // tagging succeeds; its findability later is important but not a precondition
         // for showing the user what they asked for now.
         try {
-            await tagCalendar({ drawnRows, rows, year });
+            await tagCalendar({ drawnRows, rows, year, indicatorEnabled: settings.drawTodayIndicator });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
         }
@@ -369,7 +370,23 @@ function validateYear(yearInput) {
     if (!isValid) {
         yearInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    
+
     return isValid;
 }
+
+// One panel, two views. Miro only ever hands the app a single icon:click, and
+// the import needs the calendar context anyway.
+document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => showView(tab.dataset.view));
+});
+
+function showView(name) {
+    document.querySelectorAll('.tab').forEach((tab) => {
+        tab.classList.toggle('tab-active', tab.dataset.view === name);
+    });
+    document.getElementById('view-calendar').classList.toggle('hidden', name !== 'calendar');
+    document.getElementById('view-import').classList.toggle('hidden', name !== 'import');
+}
+
+initImportView();
 
