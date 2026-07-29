@@ -146,11 +146,17 @@ async function moveIndicator(entry, x) {
         try {
             item = await run(() => board.getById(id));
         } catch {
-            // Someone deleted a piece of it. Forget the ids so the next tick
-            // builds a fresh indicator.
-            await updateCalendar(entry.calendarId, {
-                indicator: { ...entry.indicator, circleId: null, anchorId: null, connectorId: null },
-            });
+            // Someone deleted a piece of it - but not necessarily all of it.
+            // Simply forgetting the ids here would abandon whatever survives
+            // (the circle, say, if only the anchor was deleted) as an orphan
+            // that AppData no longer points to and the next tick cannot see,
+            // so createIndicator would draw a second circle/anchor/connector
+            // right beside it. The anchor shape has no fill and no border, so
+            // that orphan could never be found or cleaned up by hand.
+            // removeIndicator already tears down all three ids and tolerates
+            // each one being gone, which is exactly what a broken indicator
+            // needs, so reuse it instead of writing a second teardown.
+            await removeIndicator(entry);
             return;
         }
 

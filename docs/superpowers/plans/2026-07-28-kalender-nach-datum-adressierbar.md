@@ -842,11 +842,17 @@ async function moveIndicator(entry, x) {
         try {
             item = await run(() => board.getById(id));
         } catch {
-            // Someone deleted a piece of it. Forget the ids so the next tick
-            // builds a fresh indicator.
-            await updateCalendar(entry.calendarId, {
-                indicator: { ...entry.indicator, circleId: null, anchorId: null, connectorId: null },
-            });
+            // Someone deleted a piece of it - but not necessarily all of it.
+            // Simply forgetting the ids here would abandon whatever survives
+            // (the circle, say, if only the anchor was deleted) as an orphan
+            // that AppData no longer points to and the next tick cannot see,
+            // so createIndicator would draw a second circle/anchor/connector
+            // right beside it. The anchor shape has no fill and no border, so
+            // that orphan could never be found or cleaned up by hand.
+            // removeIndicator already tears down all three ids and tolerates
+            // each one being gone, which is exactly what a broken indicator
+            // needs, so reuse it instead of writing a second teardown.
+            await removeIndicator(entry);
             return;
         }
 
@@ -881,6 +887,7 @@ async function removeIndicator(entry) {
 ```js
 import dayjs from 'dayjs';
 
+import { board } from './board.js';
 import { findCalendars } from './anchors.js';
 import { syncIndicator } from './today.js';
 
@@ -890,8 +897,12 @@ import { syncIndicator } from './today.js';
 const TICK_MS = 10 * 60 * 1000;
 
 export async function init() {
-  miro.board.ui.on('icon:click', async () => {
-    await miro.board.ui.openPanel({url: 'app.html'});
+  // Not a credited board call, just an event subscription, so it does not go
+  // through run(). It still goes through the shared `board` export rather
+  // than the bare `miro` global, so this file has exactly one way of reaching
+  // the SDK, same as every other module here.
+  board.ui.on('icon:click', async () => {
+    await board.ui.openPanel({url: 'app.html'});
   });
 
   await tick();
@@ -901,13 +912,25 @@ export async function init() {
 // Never throws. This runs in every board viewer's session; one broken calendar
 // entry must not take somebody's board down with it.
 async function tick() {
+  let calendars;
   try {
-    const today = dayjs();
-    for (const calendar of await findCalendars()) {
-      await syncIndicator(calendar, today);
-    }
+    calendars = await findCalendars();
   } catch (error) {
+    // Nothing to iterate, so this is one failure for the whole tick.
     console.error('Timeline Builder: could not update the TODAY indicator', error);
+    return;
+  }
+
+  const today = dayjs();
+  for (const calendar of calendars) {
+    try {
+      await syncIndicator(calendar, today);
+    } catch (error) {
+      // Isolated per calendar: if this one fails deterministically (a style
+      // value Miro rejects, say), it must not starve every other calendar on
+      // the board of its update, tick after tick, forever.
+      console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
+    }
   }
 }
 

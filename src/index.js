@@ -25,13 +25,25 @@ export async function init() {
 // Never throws. This runs in every board viewer's session; one broken calendar
 // entry must not take somebody's board down with it.
 async function tick() {
+  let calendars;
   try {
-    const today = dayjs();
-    for (const calendar of await findCalendars()) {
-      await syncIndicator(calendar, today);
-    }
+    calendars = await findCalendars();
   } catch (error) {
+    // Nothing to iterate, so this is one failure for the whole tick.
     console.error('Timeline Builder: could not update the TODAY indicator', error);
+    return;
+  }
+
+  const today = dayjs();
+  for (const calendar of calendars) {
+    try {
+      await syncIndicator(calendar, today);
+    } catch (error) {
+      // Isolated per calendar: if this one fails deterministically (a style
+      // value Miro rejects, say), it must not starve every other calendar on
+      // the board of its update, tick after tick, forever.
+      console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
+    }
   }
 }
 
