@@ -116,6 +116,31 @@ test('rows are alphabetical and independent of the input order', () => {
     assert.deepEqual(plan(forwards).rows.map((row) => row.employee), ['Ali, Dilan', 'Meyer, Anna']);
 });
 
+test('blocks tied on colStart still come out in the same order regardless of input order', () => {
+    // 2026-07-25 Sat and 2026-07-26 Sun both pull forward to Mon 2026-07-27
+    // (nextWorkingDay), so these two periods for the same employee land on the
+    // same colStart. Array.sort is stable, so a comparator that only looks at
+    // colStart would leave the tie in whatever order the blocks arrived in -
+    // silently letting the input order back in through the one place it was
+    // supposed to be impossible. colSpan (3 vs 5) must break the tie instead.
+    const text = (list) => JSON.stringify(list);
+    const shortFirst = [
+        entry('Meyer, Anna', '2026-07-25', '2026-07-29'),
+        entry('Meyer, Anna', '2026-07-26', '2026-07-31'),
+    ];
+    const longFirst = [shortFirst[1], shortFirst[0]];
+
+    const plan = (list) => planVacations(parseVacations(text(list)).entries, 2026);
+
+    const blocksOf = (list) => plan(list).rows[0].blocks.map(({ colStart, colSpan }) => ({ colStart, colSpan }));
+
+    assert.deepEqual(blocksOf(shortFirst), [
+        { colStart: columnOf(2026, dayjs('2026-07-27')), colSpan: 3 },
+        { colStart: columnOf(2026, dayjs('2026-07-27')), colSpan: 5 },
+    ]);
+    assert.deepEqual(blocksOf(shortFirst), blocksOf(longFirst));
+});
+
 test('yearsIn lists the years the data touches', () => {
     const text = JSON.stringify([
         entry('Meyer, Anna', '2026-12-28', '2027-01-08'),

@@ -40,6 +40,9 @@ export function parseVacations(text) {
         }
 
         const start = dayjs(item?.vacationStartDate);
+        // A missing or empty vacationEndDate is treated as a same-day period,
+        // not a problem: the scraper always sends both dates, so this only
+        // ever happens with a period that starts and ends on the same day.
         const end = item?.vacationEndDate ? dayjs(item.vacationEndDate) : start;
 
         if (!start.isValid() || !end.isValid()) {
@@ -125,10 +128,16 @@ export function planVacations(entries, year) {
         employee,
         index,
         color: stringToColor(employee),
+        // colStart alone is not a total order: two periods pulled onto the
+        // same Monday by nextWorkingDay share a colStart, and Array.sort is
+        // stable, so ties would fall back to input order - exactly what this
+        // sort exists to remove. colSpan and then label break every tie that
+        // colStart cannot; once all three agree the blocks are identical in
+        // content, so no order is observable.
         blocks: placed
             .filter((item) => item.employee === employee)
             .map(({ colStart, colSpan, label }) => ({ colStart, colSpan, label }))
-            .sort((a, b) => a.colStart - b.colStart),
+            .sort((a, b) => a.colStart - b.colStart || a.colSpan - b.colSpan || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)),
     }));
 
     return { rows, problems };
