@@ -1,6 +1,6 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
-import { updateCalendar } from './anchors.js';
+import { updateCalendar, findCalendars } from './anchors.js';
 import { columnForToday } from './todayColumn.js';
 
 const ACCENT = '#ff5722';
@@ -188,6 +188,37 @@ async function moveIndicator(entry, x) {
 
         item.x = x;
         await run(() => item.sync());
+    }
+}
+
+/**
+ * Brings every calendar's indicator up to date in one pass.
+ *
+ * Never throws. This runs in every board viewer's session (the headless
+ * updater in index.js) and, since drawing a calendar heals indicators too,
+ * from the panel's own iframe right after a draw - one broken calendar entry
+ * must not take somebody's board down with it, nor cost the calendar that was
+ * just drawn.
+ */
+export async function updateIndicators(today) {
+    let calendars;
+    try {
+        calendars = await findCalendars();
+    } catch (error) {
+        // Nothing to iterate, so this is one failure for the whole run.
+        console.error('Timeline Builder: could not update the TODAY indicator', error);
+        return;
+    }
+
+    for (const calendar of calendars) {
+        try {
+            await syncIndicator(calendar, today);
+        } catch (error) {
+            // Isolated per calendar: if this one fails deterministically (a style
+            // value Miro rejects, say), it must not starve every other calendar on
+            // the board of its update, tick after tick, forever.
+            console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
+        }
     }
 }
 

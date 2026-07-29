@@ -522,10 +522,12 @@ async function measure(entry) {
 In `src/app.js`. Import ergänzen:
 
 ```js
+import dayjs from 'dayjs';
 import { tagCalendar } from './anchors.js';
+import { updateIndicators } from './today.js';
 ```
 
-Im `try`-Block von `drawCalendar` die Zeile, die die Shapes einsammelt, aufteilen und das Taggen einschieben — **vor** dem Gruppieren, damit ein Fehler beim Gruppieren die Anker nicht mitreißt:
+Im `try`-Block von `drawCalendar` die Zeile, die die Shapes einsammelt, aufteilen und das Taggen einschieben — **vor** dem Gruppieren, damit ein Fehler beim Gruppieren die Anker nicht mitreißt. Direkt danach die Indikatoren aller Kalender auffrischen, aus demselben Grund und mit derselben Isolierung wie das Taggen: der Fehler eines Updates darf das Zeichnen nicht kosten. Das läuft bewusst **vor** `await board.ui.closePanel()` und wird **awaited** — schließt das Panel, bevor der Aufruf fertig ist, reißt es die App-Iframe mitsamt allem noch Laufenden weg, genau das Problem, das die Struktur dieses `try`-Blocks überhaupt erst nötig gemacht hat:
 
 ```js
         // Nothing below may run before every shape actually exists on the
@@ -544,6 +546,18 @@ Im `try`-Block von `drawCalendar` die Zeile, die die Shapes einsammelt, aufteile
             await tagCalendar({ drawnRows, rows, year });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
+        }
+
+        // The headless updater (index.js) only ticks on load and every 10 minutes
+        // after, so without this a calendar drawn into an already-open board would
+        // show no TODAY indicator until the next tick, or a reload. Bringing every
+        // calendar's indicator up to date now is the same work the next tick would
+        // do; do not let a failure here cost the draw, for the same reason tagging
+        // above is isolated.
+        try {
+            await updateIndicators(dayjs());
+        } catch (error) {
+            console.error('Could not update the TODAY indicator:', error);
         }
 
         const drawing = takeStats();
@@ -697,7 +711,7 @@ An die Datei anhängen:
 ```js
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
-import { updateCalendar } from './anchors.js';
+import { updateCalendar, findCalendars } from './anchors.js';
 
 const ACCENT = '#ff5722';
 
@@ -904,6 +918,37 @@ async function removeIndicator(entry) {
         indicator: { ...entry.indicator, circleId: null, anchorId: null, connectorId: null },
     });
 }
+
+/**
+ * Brings every calendar's indicator up to date in one pass.
+ *
+ * Never throws. This runs in every board viewer's session (the headless
+ * updater in index.js) and, since drawing a calendar heals indicators too,
+ * from the panel's own iframe right after a draw - one broken calendar entry
+ * must not take somebody's board down with it, nor cost the calendar that was
+ * just drawn.
+ */
+export async function updateIndicators(today) {
+    let calendars;
+    try {
+        calendars = await findCalendars();
+    } catch (error) {
+        // Nothing to iterate, so this is one failure for the whole run.
+        console.error('Timeline Builder: could not update the TODAY indicator', error);
+        return;
+    }
+
+    for (const calendar of calendars) {
+        try {
+            await syncIndicator(calendar, today);
+        } catch (error) {
+            // Isolated per calendar: if this one fails deterministically (a style
+            // value Miro rejects, say), it must not starve every other calendar on
+            // the board of its update, tick after tick, forever.
+            console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
+        }
+    }
+}
 ```
 
 - [ ] **Step 2: Replace `src/index.js`**
@@ -912,8 +957,7 @@ async function removeIndicator(entry) {
 import dayjs from 'dayjs';
 
 import { board } from './board.js';
-import { findCalendars } from './anchors.js';
-import { syncIndicator } from './today.js';
+import { updateIndicators } from './today.js';
 
 // Miro loads this file in a headless iframe when the board opens and keeps it
 // running for as long as the board stays open. That is the only clock we get:
@@ -933,29 +977,10 @@ export async function init() {
   setInterval(tick, TICK_MS);
 }
 
-// Never throws. This runs in every board viewer's session; one broken calendar
-// entry must not take somebody's board down with it.
+// Scheduling wrapper only; the actual per-calendar work lives in today.js so
+// drawCalendar (src/app.js) can share it instead of running a second copy.
 async function tick() {
-  let calendars;
-  try {
-    calendars = await findCalendars();
-  } catch (error) {
-    // Nothing to iterate, so this is one failure for the whole tick.
-    console.error('Timeline Builder: could not update the TODAY indicator', error);
-    return;
-  }
-
-  const today = dayjs();
-  for (const calendar of calendars) {
-    try {
-      await syncIndicator(calendar, today);
-    } catch (error) {
-      // Isolated per calendar: if this one fails deterministically (a style
-      // value Miro rejects, say), it must not starve every other calendar on
-      // the board of its update, tick after tick, forever.
-      console.error(`Timeline Builder: failed to update the TODAY indicator for calendar ${calendar.entry.calendarId}`, error);
-    }
-  }
+  await updateIndicators(dayjs());
 }
 
 init();

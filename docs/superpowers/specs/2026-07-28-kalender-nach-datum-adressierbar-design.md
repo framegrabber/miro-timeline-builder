@@ -239,6 +239,10 @@ festhält, dass sie gilt.
 
 Läuft im headless iframe, der startet, sobald jemand das Board öffnet, und
 läuft, solange das Board offen ist. Einmal beim Laden, danach alle 10 Minuten.
+Zusätzlich stößt `drawCalendar` (`app.js`) denselben Durchlauf direkt nach dem
+Taggen an, damit ein frisch in ein bereits offenes Board gezeichneter Kalender
+nicht bis zum nächsten Tick — im schlimmsten Fall zehn Minuten, oder bis zum
+Neuladen des Boards — ohne Indikator dasteht.
 
 Pro Durchlauf und pro Kalender:
 

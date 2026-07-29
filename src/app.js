@@ -9,8 +9,10 @@ import {
     xOfColumn,
     widthOfColumns,
 } from './calendar.js';
+import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
+import { updateIndicators } from './today.js';
 import { initImportView } from './import.js';
 
 // Initialize year input with current year
@@ -250,6 +252,18 @@ async function drawCalendar() {
             await tagCalendar({ drawnRows, rows, year, indicatorEnabled: settings.drawTodayIndicator });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
+        }
+
+        // The headless updater (index.js) only ticks on load and every 10 minutes
+        // after, so without this a calendar drawn into an already-open board would
+        // show no TODAY indicator until the next tick, or a reload. Bringing every
+        // calendar's indicator up to date now is the same work the next tick would
+        // do; do not let a failure here cost the draw, for the same reason tagging
+        // above is isolated.
+        try {
+            await updateIndicators(dayjs());
+        } catch (error) {
+            console.error('Could not update the TODAY indicator:', error);
         }
 
         const drawing = takeStats();
