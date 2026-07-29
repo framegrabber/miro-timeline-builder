@@ -369,7 +369,21 @@ function validateYear(yearInput) {
     if (!isValid) {
         yearInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    
+
     return isValid;
+}
+
+// One panel, two views. Miro only ever hands the app a single icon:click, and
+// the import needs the calendar context anyway.
+document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => showView(tab.dataset.view));
+});
+
+function showView(name) {
+    document.querySelectorAll('.tab').forEach((tab) => {
+        tab.classList.toggle('tab-active', tab.dataset.view === name);
+    });
+    document.getElementById('view-calendar').classList.toggle('hidden', name !== 'calendar');
+    document.getElementById('view-import').classList.toggle('hidden', name !== 'import');
 }
 
