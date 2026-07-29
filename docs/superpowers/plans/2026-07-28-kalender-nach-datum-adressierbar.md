@@ -16,7 +16,7 @@
 - **Jeder Board-Aufruf läuft über den Limiter** aus `src/rateLimit.js`. Miro zählt Credits pro Nutzersitzung, nicht pro Modul — zwei Limiter würden beide das volle Budget annehmen.
 - **Reine Module importieren niemals `src/board.js`.** `calendar.js`, `today.js` (Rechenteil), `vacation.js` und `colors.js` müssen unter `node --test` ohne Browser laufen.
 - **Tests laufen mit `npm test`** (`node --test "test/*.test.js"`). Alle bestehenden 31 Tests müssen nach jedem Task grün bleiben.
-- **Kommentare auf Englisch**, wie im übrigen `src/`. Nutzersichtbare Texte im Panel auf Deutsch.
+- **Kommentare auf Englisch**, wie im übrigen `src/`. Nutzersichtbare Texte im Panel auf Englisch.
 - **Commit-Messages** im Stil des Repos: englisch, dritte Person Präsens, kleingeschrieben, ohne Präfix — z. B. `adds gridFrom to rebuild the grid from two measured cells`. Kein `feat:`/`fix:`.
 - **`vacationDuration` und Konsorten** sind die Feldnamen, die `SAPVac/sapvac.js` erzeugt: `employeeName`, `vacationStartDate`, `vacationEndDate`, `vacationDuration`, `vacationPeriod`. Das Format wird nicht geändert.
 - **Metadaten-Schlüssel** ist überall `'timelineBuilder'`. **AppData-Schlüssel** ist überall `'calendars'`.
@@ -32,8 +32,8 @@
 | `src/today.js` | NEU. `columnForToday` (rein) plus Lebenszyklus der Indikator-Items | teilweise |
 | `src/vacation.js` | NEU. SAP-JSON parsen und in Spaltenkoordinaten planen | ja |
 | `src/colors.js` | NEU. `stringToColor`, aus `SAPVac/drawshapes.js` übernommen | ja |
-| `src/import.js` | NEU. Panel-Ansicht „Urlaub" | nein |
-| `src/app.js` | Panel-Ansicht „Kalender" plus Tab-Umschaltung | nein |
+| `src/import.js` | NEU. Panel-Ansicht „Vacation" | nein |
+| `src/app.js` | Panel-Ansicht „Calendar" plus Tab-Umschaltung | nein |
 | `src/index.js` | headless: `icon:click` und der TODAY-Updater | nein |
 | `app.html` | Panel mit zwei Tabs | — |
 
@@ -940,7 +940,7 @@ init();
 - [ ] **Step 3: Verify the suite still passes**
 
 Run: `npm test`
-Expected: 39 Tests PASS. `today.js` importiert jetzt `board.js`, aber `test/today.test.js` importiert nur `columnForToday` — **prüfen, dass der Test weiterhin grün ist**. Läuft er in `window is not defined`, hat der statische Import von `board.js` das reine Modul verunreinigt; dann `columnForToday` in eine eigene Datei `src/todayColumn.js` ziehen, die nichts importiert außer `calendar.js`, und `today.js` daraus importieren lassen. Der Test importiert dann `../src/todayColumn.js`.
+Expected: 42 Tests PASS. `today.js` importiert jetzt `board.js`, aber `test/today.test.js` importiert nur `columnForToday` — **prüfen, dass der Test weiterhin grün ist**. Läuft er in `window is not defined`, hat der statische Import von `board.js` das reine Modul verunreinigt; dann `columnForToday` in eine eigene Datei `src/todayColumn.js` ziehen, die nichts importiert außer `calendar.js`, und `today.js` daraus importieren lassen. Der Test importiert dann `../src/todayColumn.js`.
 
 - [ ] **Step 4: Manual verification on a real board**
 
@@ -982,7 +982,7 @@ Im Fieldset „Shape Settings" direkt vor `</fieldset>` einfügen:
                     <div class="form-group form-group-small toggle-container">
                         <label class="toggle">
                             <input type="checkbox" id="drawTodayIndicator" tabindex="0" checked/>
-                            <span>TODAY-Indikator</span>
+                            <span>Draw Today Indicator</span>
                         </label>
                     </div>
 ```
@@ -1010,7 +1010,7 @@ export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = tr
 - [ ] **Step 4: Verify**
 
 Run: `npm test && npm run build`
-Expected: 39 Tests PASS, Build sauber.
+Expected: 42 Tests PASS, Build sauber.
 
 Auf dem Board: Kalender mit abgewählter Checkbox zeichnen, Board neu laden — es erscheint kein Indikator. `(await miro.board.getAppData('calendars')).at(-1).indicator.enabled` muss `false` sein.
 
@@ -1220,7 +1220,7 @@ export function stringToColor(str) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS, vier neue Tests (43 insgesamt).
+Expected: PASS, vier neue Tests (46 insgesamt).
 
 - [ ] **Step 5: Commit**
 
@@ -1271,7 +1271,7 @@ function entry(employeeName, vacationStartDate, vacationEndDate, extra = {}) {
 test('parseVacations rejects input that is not a list of entries', () => {
     assert.deepEqual(parseVacations('not json').entries, []);
     assert.match(parseVacations('not json').problems[0], /JSON/);
-    assert.match(parseVacations('{"a":1}').problems[0], /Liste/);
+    assert.match(parseVacations('{"a":1}').problems[0], /list/);
 });
 
 test('parseVacations reports the entries it cannot use, and keeps the rest', () => {
@@ -1287,8 +1287,8 @@ test('parseVacations reports the entries it cannot use, and keeps the rest', () 
     assert.equal(entries.length, 1);
     assert.equal(entries[0].employee, 'Meyer, Anna');
     assert.equal(problems.length, 3);
-    assert.match(problems[1], /unlesbares Datum/);
-    assert.match(problems[2], /Ende liegt vor dem Start/);
+    assert.match(problems[1], /unreadable date/);
+    assert.match(problems[2], /end is before the start/);
 });
 
 test('a span is counted with the same function that drew the day cells', () => {
@@ -1320,7 +1320,7 @@ test('a period lying entirely on a weekend is reported, not drawn', () => {
     const { rows, problems } = planVacations(entries, 2026);
 
     assert.equal(rows.length, 0);
-    assert.match(problems[0], /kein Arbeitstag/);
+    assert.match(problems[0], /no working day/);
 });
 
 test('a mismatch against the duration SAP reported is flagged', () => {
@@ -1328,7 +1328,7 @@ test('a mismatch against the duration SAP reported is flagged', () => {
     const { problems } = planVacations(parseVacations(text).entries, 2026);
 
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /SAP meldet 4, gerechnet 5/);
+    assert.match(problems[0], /SAP reports 4, calculated 5/);
 });
 
 test('entries outside the drawn year are skipped and listed', () => {
@@ -1408,11 +1408,11 @@ export function parseVacations(text) {
     try {
         raw = JSON.parse(text);
     } catch {
-        return { entries: [], problems: ['Das ist kein gültiges JSON.'] };
+        return { entries: [], problems: ['That is not valid JSON.'] };
     }
 
     if (!Array.isArray(raw)) {
-        return { entries: [], problems: ['Erwartet wird eine Liste von Urlaubseinträgen.'] };
+        return { entries: [], problems: ['Expected a list of vacation entries.'] };
     }
 
     const entries = [];
@@ -1421,10 +1421,10 @@ export function parseVacations(text) {
     raw.forEach((item, index) => {
         const employee = item?.employeeName;
         const label = item?.vacationPeriod ?? '';
-        const where = `Eintrag ${index + 1}`;
+        const where = `Entry ${index + 1}`;
 
         if (typeof employee !== 'string' || employee === '') {
-            problems.push(`${where}: kein employeeName.`);
+            problems.push(`${where}: no employeeName.`);
             return;
         }
 
@@ -1432,11 +1432,11 @@ export function parseVacations(text) {
         const end = item?.vacationEndDate ? dayjs(item.vacationEndDate) : start;
 
         if (!start.isValid() || !end.isValid()) {
-            problems.push(`${where} (${employee}): unlesbares Datum.`);
+            problems.push(`${where} (${employee}): unreadable date.`);
             return;
         }
         if (end.isBefore(start, 'day')) {
-            problems.push(`${where} (${employee}): Ende liegt vor dem Start.`);
+            problems.push(`${where} (${employee}): end is before the start.`);
             return;
         }
 
@@ -1483,7 +1483,7 @@ export function planVacations(entries, year) {
         const end = previousWorkingDay(entry.end);
 
         if (end.isBefore(start, 'day')) {
-            problems.push(`${where}: enthält keinen Arbeitstag.`);
+            problems.push(`${where}: contains no working day.`);
             continue;
         }
 
@@ -1491,7 +1491,7 @@ export function planVacations(entries, year) {
         const rawEnd = columnOf(year, end);
 
         if (rawEnd < 0 || rawStart > columns - 1) {
-            problems.push(`${where}: liegt nicht in ${year}.`);
+            problems.push(`${where}: is not in ${year}.`);
             continue;
         }
 
@@ -1503,7 +1503,7 @@ export function planVacations(entries, year) {
         // past New Year is legitimately shorter on this calendar.
         const clipped = rawStart < colStart || rawEnd > colEnd;
         if (!clipped && entry.duration !== null && colSpan !== entry.duration) {
-            problems.push(`${where}: SAP meldet ${entry.duration}, gerechnet ${colSpan}.`);
+            problems.push(`${where}: SAP reports ${entry.duration}, calculated ${colSpan}.`);
         }
 
         placed.push({ employee: entry.employee, colStart, colSpan, label: entry.label });
@@ -1526,7 +1526,7 @@ export function planVacations(entries, year) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS, elf neue Tests (54 insgesamt).
+Expected: PASS, elf neue Tests (57 insgesamt).
 
 - [ ] **Step 5: Commit**
 
@@ -1557,10 +1557,10 @@ Direkt hinter `<div class="scrollable-container container">` die Tab-Leiste einf
             <div class="tabs">
                 <div class="tabs-header-list">
                     <div class="tab tab-active" data-view="calendar" role="tab" tabindex="0">
-                        <div class="tab-text">Kalender</div>
+                        <div class="tab-text">Calendar</div>
                     </div>
                     <div class="tab" data-view="import" role="tab" tabindex="0">
-                        <div class="tab-text">Urlaub</div>
+                        <div class="tab-text">Vacation</div>
                     </div>
                 </div>
             </div>
@@ -1573,20 +1573,20 @@ Direkt hinter `<div class="scrollable-container container">` die Tab-Leiste einf
 
             <div id="view-import" class="hidden">
                 <fieldset class="section">
-                    <div class="h4 section-title">Urlaubsdaten</div>
+                    <div class="h4 section-title">Vacation Data</div>
                     <div class="form-group form-group-small">
-                        <label for="vacationJson">JSON aus dem SAP-Bookmarklet einfügen</label>
+                        <label for="vacationJson">Paste JSON from the SAP bookmarklet</label>
                         <textarea class="textarea" id="vacationJson" rows="8"
                                   placeholder='[{"employeeName": "...", "vacationStartDate": "2026-03-02", ...}]'></textarea>
                     </div>
                     <div class="form-group form-group-small hidden" id="calendarChoice">
-                        <label for="targetCalendar">In welchen Kalender?</label>
+                        <label for="targetCalendar">Which calendar?</label>
                         <select class="select select-small" id="targetCalendar"></select>
                     </div>
                 </fieldset>
 
                 <div class="footer-stack">
-                    <button type="button" id="importSubmit" class="button button-primary button-small button-wide">Urlaub zeichnen</button>
+                    <button type="button" id="importSubmit" class="button button-primary button-small button-wide">Draw Vacation</button>
                 </div>
                 <p id="importStatus" class="p-small draw-status hidden" role="status" aria-live="polite"></p>
                 <ul id="importProblems" class="p-small import-problems hidden"></ul>
@@ -1631,7 +1631,7 @@ function showView(name) {
 - [ ] **Step 4: Verify**
 
 Run: `npm test && npm run build`
-Expected: 54 Tests PASS, Build sauber.
+Expected: 57 Tests PASS, Build sauber.
 
 Im Panel: beide Tabs schalten um, das Kalenderformular funktioniert unverändert, der Urlaub-Tab zeigt Textarea und Button (der noch nichts tut).
 
@@ -1669,7 +1669,7 @@ export function initImportView() {
 }
 
 async function runImport() {
-    setStatus('Daten werden gelesen...', true);
+    setStatus('Reading data...', true);
     showProblems([]);
 
     const { entries, problems: parseProblems } = parseVacations(
@@ -1677,14 +1677,14 @@ async function runImport() {
     );
 
     if (entries.length === 0) {
-        setStatus('Es wurde nichts gezeichnet.', false);
+        setStatus('Nothing was drawn.', false);
         showProblems(parseProblems);
         return;
     }
 
     const calendar = await chooseCalendar(entries);
     if (!calendar) {
-        setStatus('Auf diesem Board gibt es keinen Kalender für diese Daten.', false);
+        setStatus('This board has no calendar for this data.', false);
         showProblems(parseProblems);
         return;
     }
@@ -1693,7 +1693,7 @@ async function runImport() {
     const problems = [...parseProblems, ...planProblems];
 
     if (rows.length === 0) {
-        setStatus('Es wurde nichts gezeichnet.', false);
+        setStatus('Nothing was drawn.', false);
         showProblems(problems);
         return;
     }
@@ -1701,7 +1701,7 @@ async function runImport() {
     try {
         await removePreviousImport(calendar.entry);
 
-        setStatus('Urlaub wird gezeichnet...', true);
+        setStatus('Drawing vacation...', true);
         const shapes = await drawRows(calendar, rows);
 
         await updateCalendar(calendar.entry.calendarId, {
@@ -1715,7 +1715,7 @@ async function runImport() {
         if (problems.length > 0) {
             // Keep the panel open: a half-understood import is exactly the
             // thing you want to see rather than have vanish.
-            setStatus(`${shapes.length} Balken gezeichnet, mit Hinweisen:`, false);
+            setStatus(`${shapes.length} bars drawn, with notes:`, false);
             showProblems(problems);
             return;
         }
@@ -1767,7 +1767,7 @@ async function removePreviousImport(entry) {
     const ids = entry.vacationItemIds ?? [];
     if (ids.length === 0) return;
 
-    setStatus('Vorheriger Import wird entfernt...', true);
+    setStatus('Removing previous import...', true);
 
     for (const id of ids) {
         try {
@@ -1824,16 +1824,16 @@ function logStats(calendar, count) {
     if (!stats) return;
 
     console.log(
-        `Timeline Builder - Urlaubsimport ${calendar.year}: ${count} Balken in ` +
+        `Timeline Builder - vacation import ${calendar.year}: ${count} bars in ` +
         `${(stats.wallClockMs / 1000).toFixed(1)} s, ${stats.credits.toLocaleString('en-US')} Credits`
     );
 }
 
 function describeFailure(error) {
     if (isRateLimitError(error)) {
-        return 'Miros Rate Limit ist erschöpft. Bitte eine Minute warten und erneut versuchen.';
+        return 'Rate limit reached. Wait a minute and try again.';
     }
-    return `Import fehlgeschlagen: ${error?.message ?? error}`;
+    return `Import failed: ${error?.message ?? error}`;
 }
 
 function setStatus(message, busy) {
@@ -1875,7 +1875,7 @@ initImportView();
 - [ ] **Step 3: Verify the build**
 
 Run: `npm test && npm run build`
-Expected: 54 Tests PASS, Build sauber.
+Expected: 57 Tests PASS, Build sauber.
 
 - [ ] **Step 4: Manual verification on a real board**
 
@@ -1892,7 +1892,7 @@ Erwartung:
 2. Die Balken sind **pixelgenau** an den Tageszellen ausgerichtet — das ist der eigentliche Prüfpunkt. Der März-Balken deckt exakt Mo 02.03. bis Fr 06.03. ab.
 3. Der Juli-Balken beginnt an Montag dem 27.07., nicht am Samstag.
 4. Der Dezember-Balken endet an der letzten Spalte des Jahres, ohne Warnung.
-5. Erneut auf „Urlaub zeichnen" klicken: es entstehen **keine** Duplikate, die alten Balken verschwinden zuerst.
+5. Erneut auf „Draw Vacation" klicken: es entstehen **keine** Duplikate, die alten Balken verschwinden zuerst.
 6. Den Kalender verschieben und erneut importieren: die Balken landen wieder korrekt unter ihm.
 
 - [ ] **Step 5: Commit**
@@ -1947,7 +1947,7 @@ Bookmarklets rund um den SAP-Teamkalender.
 
 `drawshapes.js` gibt es nicht mehr. Das Zeichnen ist in das Miro-Plugin
 [miro-timeline-builder](https://github.com/framegrabber/miro-timeline-builder)
-umgezogen, Tab „Urlaub".
+umgezogen, Tab „Vacation".
 
 Der Grund ist nicht Bequemlichkeit: Als Bookmarklet konnte der Zeichencode die
 Metadaten des Plugins nicht lesen und musste die Balken deshalb relativ
@@ -1998,7 +1998,7 @@ cd /Users/felix/Documents/code/SAPVac && gh release view v1.2.0
 
 # Abnahme der Gesamtstrecke
 
-- [ ] `npm test` in `miro-timeline-builder`: 54 Tests grün
+- [ ] `npm test` in `miro-timeline-builder`: 57 Tests grün
 - [ ] `npm run build`: sauber
 - [ ] Auf einem frischen Board: Kalender 2026 zeichnen → TODAY-Indikator erscheint auf dem heutigen Tag
 - [ ] Kalender verschieben und skalieren, Board neu laden → Indikator sitzt weiterhin richtig
