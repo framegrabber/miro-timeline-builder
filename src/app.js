@@ -11,6 +11,7 @@ import {
 } from './calendar.js';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
+import { initImportView } from './import.js';
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -386,4 +387,6 @@ function showView(name) {
     document.getElementById('view-calendar').classList.toggle('hidden', name !== 'calendar');
     document.getElementById('view-import').classList.toggle('hidden', name !== 'import');
 }
+
+initImportView();
 
