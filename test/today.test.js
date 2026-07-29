@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
-import { columnForToday } from '../src/today.js';
+import { columnForToday } from '../src/todayColumn.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
