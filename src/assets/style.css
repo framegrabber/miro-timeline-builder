@@ -112,6 +112,11 @@ body {
   color: var(--gray-600, #5f6368);
 }
 
+.vacation-hint {
+  margin: var(--space-xsmall) 0 0;
+  color: var(--gray-600, #5f6368);
+}
+
 .import-problems {
   margin: var(--space-xsmall) 0 0;
   padding-left: var(--space-medium);

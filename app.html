@@ -154,6 +154,14 @@
                         <label for="vacationJson">Paste JSON from the SAP bookmarklet</label>
                         <textarea class="textarea" id="vacationJson" rows="8"
                                   placeholder='[{"employeeName": "...", "vacationStartDate": "2026-03-02", ...}]'></textarea>
+                        <!-- target="_blank" is required: a same-tab link would
+                             navigate this panel's iframe away from the app. -->
+                        <p class="p-small vacation-hint">
+                            Run the <a href="https://github.com/framegrabber/SAPVac"
+                                       target="_blank" rel="noopener">SAPVac bookmarklet</a>
+                            on the SAP Fiori team calendar — it copies nine months of
+                            vacation data to your clipboard.
+                        </p>
                     </div>
                     <div class="form-group form-group-small hidden" id="calendarChoice">
                         <label for="targetCalendar">Which calendar?</label>
