@@ -536,7 +536,15 @@ Im `try`-Block von `drawCalendar` die Zeile, die die Shapes einsammelt, aufteile
         );
         const shapes = drawnRows.flat();
 
-        await tagCalendar({ drawnRows, rows, year });
+        // Tag the calendar for later lookup, but do not let a bookkeeping failure
+        // cost the grouping. The calendar exists and is visible whether or not the
+        // tagging succeeds; its findability later is important but not a precondition
+        // for showing the user what they asked for now.
+        try {
+            await tagCalendar({ drawnRows, rows, year });
+        } catch (error) {
+            console.error('Calendar could not be tagged for later lookup:', error);
+        }
 
         const drawing = takeStats();
 ```
