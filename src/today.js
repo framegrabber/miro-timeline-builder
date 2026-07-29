@@ -37,57 +37,98 @@ export async function syncIndicator(calendar, today) {
     await moveIndicator(entry, x);
 }
 
+/**
+ * Creates the circle, the anchor and the connector, then records all three in
+ * AppData in one write - or none of them, if anything along the way fails.
+ *
+ * This is deliberately all-or-nothing. The updater ticks every 10 minutes in
+ * the headless iframe of every open board session, and it decides whether an
+ * indicator already exists purely by checking `circleId` in AppData. A
+ * half-created indicator (say the circle and anchor exist but the connector
+ * failed) would still read as "missing" on the next tick, so createIndicator
+ * would run again and stack a second circle/anchor pair on top of the first -
+ * and again on the tick after that, for as long as the failure persists. The
+ * anchor shape has no fill and no border, so these orphans would be almost
+ * impossible to notice or clean up by hand. Rolling back whatever this
+ * attempt created, before the error propagates, keeps a failed attempt from
+ * ever being distinguishable - on the board or in AppData - from an attempt
+ * that never started.
+ */
 async function createIndicator(calendar, x) {
     const { entry, rowHeight } = calendar;
+    const created = [];
 
-    const circle = await run(() => board.createShape({
-        shape: 'circle',
-        content: '<p>TODAY</p>',
-        x,
-        y: calendar.top - rowHeight,
-        width: rowHeight,
-        height: rowHeight,
-        style: {
-            fillColor: ACCENT,
-            color: '#ffffff',
-            fontFamily: 'open_sans',
-            fontSize: Math.round(rowHeight / 4),
-            borderWidth: 0,
-        },
-    }));
+    try {
+        const circle = await run(() => board.createShape({
+            shape: 'circle',
+            content: '<p>TODAY</p>',
+            x,
+            y: calendar.top - rowHeight,
+            width: rowHeight,
+            height: rowHeight,
+            style: {
+                fillColor: ACCENT,
+                color: '#ffffff',
+                fontFamily: 'open_sans',
+                fontSize: Math.round(rowHeight / 4),
+                borderWidth: 0,
+            },
+        }));
+        created.push(circle);
 
-    // Miro refuses loose connectors, so the dotted line needs something to end
-    // on. This is that something: present, invisible, and draggable.
-    const anchor = await run(() => board.createShape({
-        shape: 'rectangle',
-        x,
-        y: calendar.bottom + 3 * rowHeight,
-        width: 8,
-        height: 8,
-        style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
-    }));
+        // Miro refuses loose connectors, so the dotted line needs something to end
+        // on. This is that something: present, invisible, and draggable.
+        const anchor = await run(() => board.createShape({
+            shape: 'rectangle',
+            x,
+            y: calendar.bottom + 3 * rowHeight,
+            width: 8,
+            height: 8,
+            style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
+        }));
+        created.push(anchor);
 
-    const connector = await run(() => board.createConnector({
-        shape: 'straight',
-        start: { item: circle.id, snapTo: 'bottom' },
-        end: { item: anchor.id, snapTo: 'top' },
-        style: {
-            strokeStyle: 'dotted',
-            strokeWidth: 2,
-            strokeColor: ACCENT,
-            startStrokeCap: 'none',
-            endStrokeCap: 'none',
-        },
-    }));
+        const connector = await run(() => board.createConnector({
+            shape: 'straight',
+            start: { item: circle.id, snapTo: 'bottom' },
+            end: { item: anchor.id, snapTo: 'top' },
+            style: {
+                strokeStyle: 'dotted',
+                strokeWidth: 2,
+                strokeColor: ACCENT,
+                startStrokeCap: 'none',
+                endStrokeCap: 'none',
+            },
+        }));
+        created.push(connector);
 
-    await updateCalendar(entry.calendarId, {
-        indicator: {
-            ...entry.indicator,
-            circleId: circle.id,
-            anchorId: anchor.id,
-            connectorId: connector.id,
-        },
-    });
+        await updateCalendar(entry.calendarId, {
+            indicator: {
+                ...entry.indicator,
+                circleId: circle.id,
+                anchorId: anchor.id,
+                connectorId: connector.id,
+            },
+        });
+    } catch (error) {
+        // Undo whatever this attempt managed to create, oldest first. Each
+        // removal is isolated and best-effort: one failing to remove must not
+        // stop the others from being tried, and a cleanup failure must never
+        // replace or hide the original error below.
+        for (const item of created) {
+            try {
+                await run(() => board.remove(item));
+            } catch {
+                // If removal also fails, this item is genuinely orphaned. That
+                // residual risk is accepted rather than designed away - a
+                // decoration does not warrant a reconciliation mechanism to
+                // hunt down doubly-failed cleanups.
+            }
+        }
+
+        console.error(`Timeline Builder: failed to create the TODAY indicator for calendar ${entry.calendarId}, rolled back`, error);
+        throw error;
+    }
 }
 
 /**
