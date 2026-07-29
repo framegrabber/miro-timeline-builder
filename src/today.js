@@ -7,6 +7,11 @@ const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
 const LINE_WIDTH = 6;
 
+// Fixed, unlike the diameter above, which scales with the calendar. The label
+// only has to be readable; letting it grow with the calendar made it dominate
+// the circle on a full-size board.
+const LABEL_SIZE = 24;
+
 // The one number to change for the circle's size. Diameter is a multiple of
 // the calendar's measured rowHeight rather than a fixed pixel value, so it
 // keeps scaling with whatever the calendar was drawn at.
@@ -82,7 +87,7 @@ async function createIndicator(calendar, x) {
     try {
         const circle = await run(() => board.createShape({
             shape: 'circle',
-            content: '<p>TODAY</p>',
+            content: '<p><b>TODAY</b></p>',
             x,
             y: centerY,
             width: diameter,
@@ -91,7 +96,7 @@ async function createIndicator(calendar, x) {
                 fillColor: CIRCLE_FILL,
                 color: '#ffffff',
                 fontFamily: 'open_sans',
-                fontSize: Math.round(diameter / 4),
+                fontSize: LABEL_SIZE,
                 borderWidth: 0,
             },
         }));
@@ -135,13 +140,16 @@ async function createIndicator(calendar, x) {
         // Grouping happens last, and is guarded on its own, on purpose. It runs
         // only after the AppData write above, so a failure here can never cost
         // the ids just recorded or trigger the rollback below - the three items
-        // are already a fully working indicator without it. The Web SDK reference
-        // documents that a Group has no writable x/y, but says nothing about
-        // whether a member's x can still be set and sync()'d once it is inside a
-        // group; moveIndicator does exactly that on every tick. If grouping ever
-        // breaks that silently, the indicator would quietly stop tracking today -
-        // worse than staying ungrouped - so grouping is treated as a convenience
-        // for the user's mouse, never a precondition for the indicator to work.
+        // are already a fully working indicator without it.
+        //
+        // The reason for the caution: a Group has no writable x/y, and the Web
+        // SDK reference does not say whether a member's x can still be set and
+        // sync()'d once it is inside one - which is exactly what moveIndicator
+        // does on every tick. Verified on a real board: moving the calendar
+        // sideways, the grouped indicator still follows to the new column. So
+        // it works, but it works undocumented. The guard stays, because an
+        // indicator that silently stopped tracking today would be worse than an
+        // ungrouped one, and the group is only a convenience for the mouse.
         try {
             await run(() => board.group({ items: [circle, anchor, connector] }));
         } catch (error) {

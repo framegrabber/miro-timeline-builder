@@ -217,8 +217,9 @@ Der Indikator besteht aus drei Board-Items:
   Zeilenhöhe über der Oberkante zusammen; bei einem größeren Kreis wird der
   Mittelpunkt aus dem Durchmesser hergeleitet, damit dieselbe halbe Zeilenhöhe
   Luft erhalten bleibt und der größere Kreis den Kalender nicht überlappt. Die
-  Schriftgröße richtet sich proportional nach diesem Durchmesser statt nach der
-  Zeilenhöhe direkt.
+  Beschriftung ist fett und 24 pt — als einziger Wert hier bewusst fest und
+  nicht aus dem Durchmesser hergeleitet: proportional mitwachsend beherrschte
+  sie auf einem Kalender in voller Größe den ganzen Kreis.
 - **unsichtbares Anker-Shape** (keine Füllung, keine Umrandung), beim Anlegen
   drei Zeilenhöhen unter der Tageszeile
 - **Connector** zwischen beiden, `strokeStyle: 'dotted'`, schwarz (`#000000`)
