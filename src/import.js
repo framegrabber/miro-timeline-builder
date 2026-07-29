@@ -125,16 +125,32 @@ async function removePreviousImport(entry) {
 
     setStatus('Removing previous import...', true);
 
+    // A per-id failure here is not one thing. getById or remove throwing
+    // after run() exhausts its retries on a rate limit means the call never
+    // completed - the bar's fate is unknown, not decided - while any other
+    // throw means the bar is genuinely gone (deleted by hand, by undo, or
+    // just removed by the call above). Collapsing both into "gone", as this
+    // used to, cleared vacationItemIds unconditionally: a bar that only hit a
+    // transient rate limit was left on the board with its one handle
+    // discarded, so every later import stacked a duplicate on top of it.
+    // Keeping the rate-limited ids here, and only ever dropping ids that are
+    // confirmed gone or were actually removed, is the same distinction
+    // anchors.js's measure() makes for the equivalent failure.
+    const remaining = [];
+
     for (const id of ids) {
         try {
             const item = await run(() => board.getById(id));
             await run(() => board.remove(item));
-        } catch {
-            // Already gone, by hand or by undo.
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                remaining.push(id);
+            }
+            // else: already gone, by hand or by undo - drop it.
         }
     }
 
-    await updateCalendar(entry.calendarId, { vacationItemIds: [] });
+    await updateCalendar(entry.calendarId, { vacationItemIds: remaining });
 }
 
 // Bars sit directly under the day row and take the calendar's own measured row
@@ -148,6 +164,13 @@ async function drawRows(calendar, rows) {
             const x = xOfColumn(grid, block.colStart);
             const y = bottom + grid.padding + row.index * (rowHeight + grid.padding);
 
+            // employee and label are interpolated into HTML unescaped. Accepted
+            // deliberately, not an oversight: this data comes from the user's
+            // own SAP export, not from a third party, and it lands in Miro's
+            // rich-text renderer rather than this app's DOM, so there is no
+            // injection surface to guard against here. It is a new pattern in
+            // this codebase, though - treat it as a one-off exception, not a
+            // precedent for the next place that interpolates user-facing text.
             const shape = await run(() => board.createShape({
                 content: `<p><b>${row.employee}</b><br />${block.label}</p>`,
                 shape: 'rectangle',

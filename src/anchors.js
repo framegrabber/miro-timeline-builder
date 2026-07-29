@@ -110,6 +110,29 @@ export async function updateCalendar(calendarId, changes) {
     ));
 }
 
+/**
+ * The AppData race this module does not close.
+ *
+ * tagCalendar, updateCalendar and findCalendars' self-pruning (the
+ * `writeCalendars(alive)` above) all do the same thing: read the whole
+ * `calendars` blob, compute a new array from it, and write the whole blob
+ * back - two separate board calls, no compare-and-swap between them. AppData
+ * is one board-wide value shared by every viewer's session, not per-session
+ * state.
+ *
+ * The headless updater (index.js) calls tick() -> findCalendars() the moment
+ * a board is opened and again every 10 minutes for as long as it stays open,
+ * so every open session is a potential writer at any time. If one user
+ * finishes tagCalendar's write for a freshly drawn calendar in the same
+ * window as another session's tick reads the old list and writes it back
+ * (pruning, or an indicator/import update via updateCalendar), the later
+ * write wins in full and silently overwrites the earlier one - there is no
+ * merge. Because there is also no board-wide scan to reconstruct AppData from
+ * (see tagCalendar's doc comment), a calendar entry lost this way is not
+ * recoverable; that calendar stays unaddressable until it is redrawn.
+ *
+ * Not fixed here - see the design doc's accepted costs for why.
+ */
 export async function readCalendars() {
     return (await run(() => board.getAppData(APP_DATA_KEY))) ?? [];
 }

@@ -1,4 +1,4 @@
-import { board, run } from './board.js';
+import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar } from './anchors.js';
 import { columnForToday } from './todayColumn.js';
@@ -12,10 +12,15 @@ const NUDGE = 0.5;
 /**
  * Brings the indicator of one calendar in line with today.
  *
- * Reads before it writes, on purpose: the headless iframe runs once per user,
- * so five open sessions mean five updaters. Comparing first makes the normal
- * case zero writes, and in a collision every updater writes the same value.
- * The state is idempotent rather than coordinated.
+ * Reads before it writes, on purpose - but that guarantee only covers the move
+ * path. moveIndicator compares the measured x against the wanted one and only
+ * writes on a real difference, so five open sessions (one updater each, per
+ * the headless iframe) converge on the same value with the normal case being
+ * zero writes. createIndicator has no such guard: two sessions opening a board
+ * whose indicator does not exist yet can both see `circleId` missing, both
+ * pass the check above, and both create a full triple. That race is accepted,
+ * not fixed - see the design doc's accepted costs - because closing it would
+ * need a compare-and-swap that AppData does not offer.
  */
 export async function syncIndicator(calendar, today) {
     const { entry, grid } = calendar;
@@ -145,7 +150,26 @@ async function moveIndicator(entry, x) {
         let item;
         try {
             item = await run(() => board.getById(id));
-        } catch {
+        } catch (error) {
+            // getById throwing after run() exhausts its retries on a rate
+            // limit is not the same as the item being gone - the call never
+            // completed, so the item's real state is unknown. Treating it as
+            // gone here would call removeIndicator, whose own board.remove
+            // calls would hit the same limit and be swallowed by its
+            // best-effort catches, so circleId/anchorId/connectorId would be
+            // cleared in AppData while the shapes stayed on the board. The
+            // next tick would then see no indicator at all and draw a second
+            // circle, anchor and connector beside the orphaned first set, and
+            // it would silently discard any manual repositioning the user did
+            // - the documented way to adjust the indicator's height and the
+            // connector's length. So a rate limit must leave the ids
+            // untouched and just skip this pass, exactly like anchors.js's
+            // measure() does for the same failure.
+            if (isRateLimitError(error)) {
+                console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
+                return;
+            }
+
             // Someone deleted a piece of it - but not necessarily all of it.
             // Simply forgetting the ids here would abandon whatever survives
             // (the circle, say, if only the anchor was deleted) as an orphan

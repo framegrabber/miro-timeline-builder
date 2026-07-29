@@ -359,6 +359,22 @@ vorhersagbar, heißt aber, dass Löschen nicht "aus" bedeutet. Die Alternative
 wäre, dass ein versehentliches Löschen den Indikator dauerhaft verliert; das
 wäre schlechter.
 
+**Bewusst in Kauf genommen:** `tagCalendar`, `updateCalendar` und das
+Selbst-Aufräumen in `findCalendars` lesen und schreiben den AppData-Eintrag
+`calendars` jeweils nicht-atomar — lesen, im Speicher verändern, zurückschreiben,
+ohne Compare-and-Swap dazwischen. AppData ist aber ein einziger Wert für das
+ganze Board, geteilt von jeder offenen Sitzung, und der headless Updater ruft
+`tick()` sofort beim Öffnen des Boards und danach alle 10 Minuten erneut auf.
+Zeichnet jemand gerade einen Kalender, während im selben Moment bei einer
+anderen Sitzung ein Tick liest und zurückschreibt, gewinnt der jüngere
+Schreibvorgang vollständig — der frisch angelegte Eintrag ist dann weg, ohne
+Fehlermeldung. Da es keinen board-weiten Scan gibt, der AppData aus den
+Metadaten neu aufbauen könnte, ist dieser Kalender damit dauerhaft nicht mehr
+adressierbar, bis er neu gezeichnet wird. Das Zeitfenster ist eng und der
+Nutzerkreis laut Spec eine Person; eine echte Lösung bräuchte eine
+Synchronisationsprimitive, die AppData nicht anbietet. Nicht behoben, nur in
+Kauf genommen.
+
 ## Tests
 
 Neu, alle unter `node --test` und ohne Miro:

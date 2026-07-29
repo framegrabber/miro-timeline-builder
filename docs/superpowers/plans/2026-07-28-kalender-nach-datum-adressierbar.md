@@ -695,7 +695,7 @@ git commit -m "adds the column lookup for the TODAY indicator"
 An die Datei anhängen:
 
 ```js
-import { board, run } from './board.js';
+import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar } from './anchors.js';
 
@@ -708,10 +708,15 @@ const NUDGE = 0.5;
 /**
  * Brings the indicator of one calendar in line with today.
  *
- * Reads before it writes, on purpose: the headless iframe runs once per user,
- * so five open sessions mean five updaters. Comparing first makes the normal
- * case zero writes, and in a collision every updater writes the same value.
- * The state is idempotent rather than coordinated.
+ * Reads before it writes, on purpose - but that guarantee only covers the move
+ * path. moveIndicator compares the measured x against the wanted one and only
+ * writes on a real difference, so five open sessions (one updater each, per
+ * the headless iframe) converge on the same value with the normal case being
+ * zero writes. createIndicator has no such guard: two sessions opening a board
+ * whose indicator does not exist yet can both see `circleId` missing, both
+ * pass the check above, and both create a full triple. That race is accepted,
+ * not fixed - see the design doc's accepted costs - because closing it would
+ * need a compare-and-swap that AppData does not offer.
  */
 export async function syncIndicator(calendar, today) {
     const { entry, grid } = calendar;
@@ -841,7 +846,26 @@ async function moveIndicator(entry, x) {
         let item;
         try {
             item = await run(() => board.getById(id));
-        } catch {
+        } catch (error) {
+            // getById throwing after run() exhausts its retries on a rate
+            // limit is not the same as the item being gone - the call never
+            // completed, so the item's real state is unknown. Treating it as
+            // gone here would call removeIndicator, whose own board.remove
+            // calls would hit the same limit and be swallowed by its
+            // best-effort catches, so circleId/anchorId/connectorId would be
+            // cleared in AppData while the shapes stayed on the board. The
+            // next tick would then see no indicator at all and draw a second
+            // circle, anchor and connector beside the orphaned first set, and
+            // it would silently discard any manual repositioning the user did
+            // - the documented way to adjust the indicator's height and the
+            // connector's length. So a rate limit must leave the ids
+            // untouched and just skip this pass, exactly like anchors.js's
+            // measure() does for the same failure.
+            if (isRateLimitError(error)) {
+                console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
+                return;
+            }
+
             // Someone deleted a piece of it - but not necessarily all of it.
             // Simply forgetting the ids here would abandon whatever survives
             // (the circle, say, if only the anchor was deleted) as an orphan
@@ -1561,7 +1585,7 @@ export function planVacations(entries, year) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS, elf neue Tests (57 insgesamt).
+Expected: PASS, zwölf neue Tests (58 insgesamt).
 
 - [ ] **Step 5: Commit**
 
@@ -1666,7 +1690,7 @@ function showView(name) {
 - [ ] **Step 4: Verify**
 
 Run: `npm test && npm run build`
-Expected: 57 Tests PASS, Build sauber.
+Expected: 58 Tests PASS, Build sauber.
 
 Im Panel: beide Tabs schalten um, das Kalenderformular funktioniert unverändert, der Urlaub-Tab zeigt Textarea und Button (der noch nichts tut).
 
@@ -1819,16 +1843,32 @@ async function removePreviousImport(entry) {
 
     setStatus('Removing previous import...', true);
 
+    // A per-id failure here is not one thing. getById or remove throwing
+    // after run() exhausts its retries on a rate limit means the call never
+    // completed - the bar's fate is unknown, not decided - while any other
+    // throw means the bar is genuinely gone (deleted by hand, by undo, or
+    // just removed by the call above). Collapsing both into "gone", as this
+    // used to, cleared vacationItemIds unconditionally: a bar that only hit a
+    // transient rate limit was left on the board with its one handle
+    // discarded, so every later import stacked a duplicate on top of it.
+    // Keeping the rate-limited ids here, and only ever dropping ids that are
+    // confirmed gone or were actually removed, is the same distinction
+    // anchors.js's measure() makes for the equivalent failure.
+    const remaining = [];
+
     for (const id of ids) {
         try {
             const item = await run(() => board.getById(id));
             await run(() => board.remove(item));
-        } catch {
-            // Already gone, by hand or by undo.
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                remaining.push(id);
+            }
+            // else: already gone, by hand or by undo - drop it.
         }
     }
 
-    await updateCalendar(entry.calendarId, { vacationItemIds: [] });
+    await updateCalendar(entry.calendarId, { vacationItemIds: remaining });
 }
 
 // Bars sit directly under the day row and take the calendar's own measured row
@@ -1842,6 +1882,13 @@ async function drawRows(calendar, rows) {
             const x = xOfColumn(grid, block.colStart);
             const y = bottom + grid.padding + row.index * (rowHeight + grid.padding);
 
+            // employee and label are interpolated into HTML unescaped. Accepted
+            // deliberately, not an oversight: this data comes from the user's
+            // own SAP export, not from a third party, and it lands in Miro's
+            // rich-text renderer rather than this app's DOM, so there is no
+            // injection surface to guard against here. It is a new pattern in
+            // this codebase, though - treat it as a one-off exception, not a
+            // precedent for the next place that interpolates user-facing text.
             const shape = await run(() => board.createShape({
                 content: `<p><b>${row.employee}</b><br />${block.label}</p>`,
                 shape: 'rectangle',
@@ -1957,7 +2004,7 @@ initImportView();
 - [ ] **Step 3: Verify the build**
 
 Run: `npm test && npm run build`
-Expected: 57 Tests PASS, Build sauber.
+Expected: 58 Tests PASS, Build sauber.
 
 - [ ] **Step 4: Manual verification on a real board**
 
@@ -2080,7 +2127,7 @@ cd /Users/felix/Documents/code/SAPVac && gh release view v1.2.0
 
 # Abnahme der Gesamtstrecke
 
-- [ ] `npm test` in `miro-timeline-builder`: 57 Tests grün
+- [ ] `npm test` in `miro-timeline-builder`: 58 Tests grün
 - [ ] `npm run build`: sauber
 - [ ] Auf einem frischen Board: Kalender 2026 zeichnen → TODAY-Indikator erscheint auf dem heutigen Tag
 - [ ] Kalender verschieben und skalieren, Board neu laden → Indikator sitzt weiterhin richtig
