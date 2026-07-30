@@ -427,3 +427,51 @@ test('wrapping happens between words, so a line is never split mid-word', () => 
 
     assert.ok(perLine >= 'Pfingstferien'.length, `at ${size}px only ${perLine} chars fit per line`);
 });
+
+test('a one-day break says its date once, not twice', () => {
+    const { entries } = parseSchoolHolidays([{
+        startDate: '2026-05-15', endDate: '2026-05-15',
+        name: [{ text: 'Variabler Ferientag' }],
+        subdivisions: [{ code: 'DE-BB', shortName: 'BB' }],
+    }]);
+    const { rows } = planBands(entries, 2026, { selected: ['DE-BB'], names: NAMES });
+
+    assert.equal(rows[0].blocks[0].detail, 'BB 15.05.');
+});
+
+test('the year is dropped for a break inside one year', () => {
+    const { entries } = parseSchoolHolidays([{
+        startDate: '2026-05-26', endDate: '2026-06-05',
+        name: [{ text: 'Pfingstferien' }],
+        subdivisions: [{ code: 'DE-BY', shortName: 'BY' }],
+    }]);
+    const { rows } = planBands(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+
+    // The calendar is a single year, so the year on a band repeats what the
+    // drawing already is.
+    assert.equal(rows[0].blocks[0].detail, 'BY 26.05. - 05.06.');
+});
+
+test('the year survives on a break that crosses New Year', () => {
+    // 22.12. - 10.01. would not say which end is which. These are the
+    // Christmas breaks, eleven to twenty-one days, so the band has the room.
+    const { entries } = parseSchoolHolidays(SCHOOL);
+    const { rows } = planBands(entries, 2026, { selected: ['DE-HE'], names: NAMES });
+
+    assert.equal(rows[0].blocks[0].detail, 'HE 22.12.25 - 10.01.26');
+});
+
+test('the separator keeps its spaces so no unbreakable token forms', () => {
+    // "15.05.-29.05." would be one thirteen-character word, and a word wider
+    // than the line hangs out of the shape instead of wrapping - worse on a
+    // one-column band than the longer string it replaced.
+    const { entries } = parseSchoolHolidays([{
+        startDate: '2026-05-15', endDate: '2026-05-29',
+        name: [{ text: 'Pfingstferien' }],
+        subdivisions: [{ code: 'DE-BY', shortName: 'BY' }],
+    }]);
+    const { rows } = planBands(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const longestWord = Math.max(...rows[0].blocks[0].detail.split(' ').map((w) => w.length));
+
+    assert.ok(longestWord <= 6, `longest word is "${longestWord}" characters`);
+});

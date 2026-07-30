@@ -20,6 +20,31 @@ const SHORT_NAME_OVERRIDES = { 'DE-NW': 'NRW' };
 
 const DATE_FORMAT = 'DD.MM.YY';
 
+// Without the year: on a band, the calendar itself says which year it is.
+const SHORT_DATE = 'DD.MM.';
+
+/**
+ * The date range as a band prints it.
+ *
+ * Three things are dropped because the drawing already carries them. The
+ * repeated date on a one-day break, which said the same thing twice. The
+ * year, except when the break crosses New Year and it is the only thing
+ * telling the two ends apart - those are the Christmas breaks, eleven to
+ * twenty-one days long and among the widest bands there are, so they can
+ * afford it. And nothing else: the band's own extent is the range.
+ *
+ * "MV 15.05." is nine characters where "MV 15.05.26 - 15.05.26" was
+ * twenty-two, and the separator keeps its spaces so the longest unbreakable
+ * word stays six characters rather than becoming a thirteen-character token
+ * that no one-column band could ever wrap.
+ */
+function dateRange(start, end) {
+    const format = start.year() === end.year() ? SHORT_DATE : DATE_FORMAT;
+
+    if (start.isSame(end, 'day')) return start.format(format);
+    return `${start.format(format)} - ${end.format(format)}`;
+}
+
 function textOf(names) {
     return names?.[0]?.text ?? '';
 }
@@ -227,7 +252,7 @@ export function planBands(entries, year, { selected, names }) {
                 label: entry.name,
                 // The real dates, not the clipped ones: a break that starts in
                 // December of the previous year still says so on the board.
-                detail: `${names.get(code)?.shortName ?? code} ${entry.start.format(DATE_FORMAT)} - ${entry.end.format(DATE_FORMAT)}`,
+                detail: `${names.get(code)?.shortName ?? code} ${dateRange(entry.start, entry.end)}`,
             });
         }
     }
