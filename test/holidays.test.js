@@ -15,6 +15,13 @@ import {
 } from '../src/holidays.js';
 import { columnOf } from '../src/calendar.js';
 
+import {
+    offsetOverlapping,
+    layoutBlock,
+    STICKY_FACTOR,
+    STICKY_GAP_FACTOR,
+} from '../src/holidays.js';
+
 dayjs.extend(isoWeek);
 
 const fixture = (name) =>
@@ -192,4 +199,104 @@ test('only the selected states get a band', () => {
     const { rows } = planBands(entries, 2026, { selected: ['DE-HE'], names: NAMES });
 
     assert.deepEqual(rows.map((row) => row.key), ['Hessen']);
+});
+
+// A calendar with 100 px cells and 2 px padding: pitch 102, sticky 200 wide.
+const centerXof = (column) => column * 102 + 50;
+const STICKY_SIZE = 200;
+
+test('a lone sticky sits over its own column', () => {
+    const [only] = offsetOverlapping([{ column: 10 }], { centerXof, stickySize: STICKY_SIZE });
+
+    assert.equal(only.x, centerXof(10));
+});
+
+test('stickies far apart are not moved', () => {
+    const placed = offsetOverlapping([{ column: 10 }, { column: 60 }], {
+        centerXof,
+        stickySize: STICKY_SIZE,
+    });
+
+    assert.deepEqual(placed.map((sticky) => sticky.x), [centerXof(10), centerXof(60)]);
+});
+
+test('neighbouring columns push the later sticky to the right', () => {
+    // Good Friday and Easter Monday are adjacent columns - the weekend between
+    // them has none. 102 px apart, 250 needed.
+    const placed = offsetOverlapping([{ column: 65 }, { column: 66 }], {
+        centerXof,
+        stickySize: STICKY_SIZE,
+    });
+
+    assert.equal(placed[0].x, centerXof(65), 'the first one keeps its column');
+    assert.ok(placed[1].x > centerXof(66));
+    assert.equal(placed[1].x - placed[0].x, STICKY_SIZE * 1.25);
+});
+
+test('three in a row cascade instead of stacking on the second', () => {
+    const placed = offsetOverlapping([{ column: 10 }, { column: 11 }, { column: 12 }], {
+        centerXof,
+        stickySize: STICKY_SIZE,
+    });
+
+    assert.equal(placed[2].x - placed[1].x, STICKY_SIZE * 1.25);
+    assert.equal(placed[2].x - placed[0].x, STICKY_SIZE * 2.5);
+});
+
+test('the placed x never runs backwards', () => {
+    const placed = offsetOverlapping(
+        [{ column: 1 }, { column: 2 }, { column: 40 }, { column: 41 }],
+        { centerXof, stickySize: STICKY_SIZE }
+    );
+    const xs = placed.map((sticky) => sticky.x);
+
+    assert.deepEqual(xs, [...xs].sort((a, b) => a - b));
+});
+
+test('nothing drawn reserves nothing', () => {
+    const block = layoutBlock({ top: 0, rowHeight: 100, gap: 2, bandCount: 0, stickyCount: 0 });
+
+    assert.equal(block.reservedRows, 0);
+    assert.deepEqual(block.bandCenterYs, []);
+    assert.equal(block.stickyCenterY, null);
+});
+
+test('each band adds exactly one row plus one gap', () => {
+    const one = layoutBlock({ top: 0, rowHeight: 100, gap: 2, bandCount: 1, stickyCount: 0 });
+    const two = layoutBlock({ top: 0, rowHeight: 100, gap: 2, bandCount: 2, stickyCount: 0 });
+
+    assert.equal(one.reservedRows, 102 / 100);
+    assert.equal(two.reservedRows - one.reservedRows, 102 / 100);
+});
+
+test('bands stack upward from the calendar, index 0 nearest', () => {
+    const { bandCenterYs } = layoutBlock({
+        top: 1000,
+        rowHeight: 100,
+        gap: 2,
+        bandCount: 2,
+        stickyCount: 0,
+    });
+
+    // Band 0: bottom at 1000 - 2, centre half a row above that.
+    assert.equal(bandCenterYs[0], 1000 - 2 - 50);
+    assert.equal(bandCenterYs[1], 1000 - 4 - 100 - 50);
+    assert.ok(bandCenterYs[1] < bandCenterYs[0], 'higher index is further up');
+});
+
+test('the sticky row sits above the bands with a visible gap', () => {
+    const block = layoutBlock({ top: 1000, rowHeight: 100, gap: 2, bandCount: 2, stickyCount: 3 });
+    const bandsTop = 1000 - 2 * (100 + 2);
+
+    assert.equal(block.stickySize, STICKY_FACTOR * 100);
+    assert.equal(block.stickyCenterY, bandsTop - STICKY_GAP_FACTOR * 100 - block.stickySize / 2);
+    assert.equal(block.reservedRows, (2 * 102 + 1.5 * 100 + 200) / 100);
+});
+
+test('with no stickies the block ends at the top band', () => {
+    const withStickies = layoutBlock({ top: 0, rowHeight: 100, gap: 2, bandCount: 1, stickyCount: 1 });
+    const without = layoutBlock({ top: 0, rowHeight: 100, gap: 2, bandCount: 1, stickyCount: 0 });
+
+    assert.equal(without.reservedRows, 102 / 100);
+    assert.ok(withStickies.reservedRows > without.reservedRows);
 });

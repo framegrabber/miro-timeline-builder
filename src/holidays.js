@@ -213,3 +213,75 @@ export function planBands(entries, year, { selected, names }) {
 
     return { rows: groupIntoRows(placed, { colorOf: stringToColor }), problems };
 }
+
+// --- layout -----------------------------------------------------------------
+// Everything is derived from the calendar's own measured rowHeight and padding.
+// No fixed pixel value appears here, for the same reason the TODAY circle
+// derives its diameter from rowHeight: the calendar can be drawn at any scale.
+
+/** Sticky edge length, in rowHeights. Miro keeps the square aspect itself. */
+export const STICKY_FACTOR = 2;
+
+/** Clear space between the sticky row and the bands - where the line shows. */
+export const STICKY_GAP_FACTOR = 1.5;
+
+/** Minimum space between two stickies, as a fraction of their own size. */
+export const STICKY_MIN_GAP_FACTOR = 0.25;
+
+/**
+ * Slides stickies right until they stop overlapping.
+ *
+ * Good Friday and Easter Monday sit in neighbouring columns - the weekend
+ * between them has none - and a sticky is wider than a column, so a collision
+ * happens every single year. The greedy pass keeps the leftmost sticky on its
+ * own column and pushes each later one just far enough clear; three in a row
+ * cascade. At the end of the year the last sticky can end up past the right
+ * edge of the calendar, which is the correct consequence of the rule.
+ *
+ * The connector then runs diagonally to the day cell, which is what anyone
+ * would draw by hand.
+ */
+export function offsetOverlapping(stickies, { centerXof, stickySize }) {
+    const minimumStep = stickySize * (1 + STICKY_MIN_GAP_FACTOR);
+    let previousX = -Infinity;
+
+    return stickies.map((sticky) => {
+        const x = Math.max(centerXof(sticky.column), previousX + minimumStep);
+        previousX = x;
+        return { ...sticky, x };
+    });
+}
+
+/**
+ * The vertical block above the calendar.
+ *
+ * `bandCenterYs` is indexed from the calendar upwards: index 0 is the band
+ * touching it. The alphabetically first state goes on top, so a row with
+ * `index` i belongs at `bandCenterYs[bandCount - 1 - i]`.
+ *
+ * `reservedRows` is what today.js reads to put the TODAY circle above all of
+ * this. At zero it is the formula the circle already used, so a calendar
+ * without holidays does not move by a pixel.
+ */
+export function layoutBlock({ top, rowHeight, gap, bandCount, stickyCount }) {
+    const stickySize = STICKY_FACTOR * rowHeight;
+
+    const bandCenterYs = Array.from(
+        { length: bandCount },
+        (_, k) => top - (k + 1) * gap - k * rowHeight - rowHeight / 2
+    );
+
+    const bandsTop = top - bandCount * (rowHeight + gap);
+    const hasStickies = stickyCount > 0;
+    const stickyGap = STICKY_GAP_FACTOR * rowHeight;
+
+    const stickyCenterY = hasStickies ? bandsTop - stickyGap - stickySize / 2 : null;
+    const blockTop = hasStickies ? bandsTop - stickyGap - stickySize : bandsTop;
+
+    return {
+        stickySize,
+        bandCenterYs,
+        stickyCenterY,
+        reservedRows: (top - blockTop) / rowHeight,
+    };
+}
