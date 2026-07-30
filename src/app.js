@@ -388,7 +388,7 @@ function validateYear(yearInput) {
     return isValid;
 }
 
-// One panel, two views. Miro only ever hands the app a single icon:click, and
+// One panel, three views. Miro only ever hands the app a single icon:click, and
 // the import needs the calendar context anyway.
 document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => showView(tab.dataset.view));

@@ -12,15 +12,12 @@ import {
     appliesTo,
     planStickies,
     planBands,
-} from '../src/holidays.js';
-import { columnOf } from '../src/calendar.js';
-
-import {
     offsetOverlapping,
     layoutBlock,
     STICKY_FACTOR,
     STICKY_GAP_FACTOR,
 } from '../src/holidays.js';
+import { columnOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
 
@@ -299,4 +296,15 @@ test('with no stickies the block ends at the top band', () => {
 
     assert.equal(without.reservedRows, 102 / 100);
     assert.ok(withStickies.reservedRows > without.reservedRows);
+});
+
+test('stickies with no bands beneath them still reserve their own height', () => {
+    // A year past the end of the school-holiday data - public holidays are
+    // computed and go on forever, school breaks do not - so this is the shape
+    // a 2031 calendar takes, not a hypothetical one.
+    const block = layoutBlock({ top: 1000, rowHeight: 100, gap: 2, bandCount: 0, stickyCount: 4 });
+
+    assert.deepEqual(block.bandCenterYs, []);
+    assert.equal(block.stickyCenterY, 1000 - STICKY_GAP_FACTOR * 100 - block.stickySize / 2);
+    assert.equal(block.reservedRows, (STICKY_GAP_FACTOR * 100 + block.stickySize) / 100);
 });

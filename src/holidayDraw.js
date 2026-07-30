@@ -85,6 +85,11 @@ export async function recordHolidays(calendarId, changes) {
 export async function drawHolidays(calendar, cells, { stickies, rows }) {
     const previous = await currentHolidays(calendar.entry.calendarId);
     const carriedIds = previous.itemIds ?? [];
+    // A carried column is a cell still painted from a removal that could not
+    // confirm it restored (removeHolidays' stillPainted). Dropping it here,
+    // the same way carriedIds must not be dropped, would strand that cell
+    // with no handle: a repainted cell has no id, only its column.
+    const carriedColumns = previous.markedColumns ?? [];
 
     const { grid, rowHeight, top } = calendar;
     const created = [];
@@ -212,11 +217,16 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
             created.push(await connect(note.id, anchor.id));
         }
 
-        bookkeeping = {
+        const persisted = {
             itemIds: [...carriedIds, ...created.map((item) => item.id)],
-            markedColumns,
+            markedColumns: [...new Set([...carriedColumns, ...markedColumns])],
             reservedRows: layout.reservedRows,
         };
+        // createdCount is only about this one call - how many items it
+        // actually created, for logStats to report - not part of the
+        // calendar's stored bookkeeping, so it is added to the return value
+        // but not written to AppData.
+        bookkeeping = { ...persisted, createdCount: created.length };
 
         // Record on success too, not only on failure: today's caller trusts
         // the return value to be written afterwards, and if that write fails,
@@ -226,7 +236,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         // rethrown - rather than being a second, differently-shaped failure
         // point. The caller still gets the same object back so it can merge
         // its own key (subdivisions) with recordHolidays.
-        await recordHolidays(calendar.entry.calendarId, bookkeeping);
+        await recordHolidays(calendar.entry.calendarId, persisted);
     } catch (error) {
         // Record what is actually on the board before letting this out. Without
         // it a retry cannot find the items that did land and stacks more on top
@@ -236,8 +246,18 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         try {
             await recordHolidays(calendar.entry.calendarId, {
                 itemIds: [...carriedIds, ...created.map((item) => item.id)],
-                markedColumns,
-                reservedRows: layout.reservedRows,
+                // Same carry-forward as the success path above: a column kept
+                // from an earlier removal that could not confirm it restored
+                // is still holiday-green and must not be dropped just because
+                // this draw also failed.
+                markedColumns: [...new Set([...carriedColumns, ...markedColumns])],
+                // Asymmetric on purpose: if nothing was created yet (the very
+                // first cell.sync() threw), there is no block on the board to
+                // reserve space for, and reserving it anyway lifts the TODAY
+                // circle into empty space with nothing to move it back. If a
+                // draw got partway, over-reserving slightly is the safe side -
+                // the circle sits a little high rather than getting buried.
+                reservedRows: created.length === 0 ? 0 : layout.reservedRows,
             });
         } catch (writeError) {
             // The write itself can fail - a rate-limit burst can exhaust
@@ -293,8 +313,9 @@ export async function removeHolidays(calendar, cells) {
     // Columns whose cell.sync() failed and so are still holiday-green. Kept,
     // not dropped: unlike a shape, a repainted cell cannot be found or
     // restored by id, only by the column remembered here.
+    const columns = previous.markedColumns ?? [];
     const stillPainted = [];
-    for (const column of previous.markedColumns ?? []) {
+    for (const column of columns) {
         const cell = cells[column];
         if (!cell) continue;
 
@@ -302,10 +323,21 @@ export async function removeHolidays(calendar, cells) {
         try {
             await run(() => cell.sync());
         } catch (error) {
+            stillPainted.push(column);
+
+            // A rate limit will hit the next column too, and the one after that,
+            // each burning run()'s full retry budget. Every column left is still
+            // painted, so record them all and stop rather than grind through them.
+            if (isRateLimitError(error)) {
+                const reached = columns.indexOf(column);
+                stillPainted.push(...columns.slice(reached + 1));
+                console.warn(`Timeline Builder: rate limited while restoring day cells on calendar ${calendar.entry.calendarId}, keeping ${stillPainted.length} columns for the next attempt.`);
+                break;
+            }
+
             // A cell that cannot be restored stays green. Reported, not fatal:
             // refusing to draw the new block because an old one would not let
             // go leaves the board in a worse state than one stale cell.
-            stillPainted.push(column);
             console.warn(
                 `Timeline Builder: could not restore day cell ${column} on calendar ${calendar.entry.calendarId}`,
                 error
@@ -343,7 +375,7 @@ export async function removeHolidays(calendar, cells) {
 
     await recordHolidays(calendar.entry.calendarId, {
         itemIds: remaining,
-        markedColumns: stillPainted,
+        markedColumns: [...new Set(stillPainted)],
         reservedRows: 0,
     });
 }

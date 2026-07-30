@@ -24,6 +24,16 @@ Angenommen, aus Miros Community-Farbtabelle:
 sehen auf dem Board unterschiedlich aus. **Wo es zu reparieren ist:**
 ausschließlich `src/stickyColors.js`.
 
+Das gilt nur, wenn die Palette-*Namen* selbst gültig sind und nur der Hex-Wert
+danebenliegt. Wäre `dark_green` gar keine gültige Miro-Sticky-Farbe, würde
+`createStickyNote` stattdessen hart fehlschlagen - und zwar erst, nachdem
+Zellen und Bänder schon gezeichnet sind, jedes Mal. **Zweites Symptom:** das
+Zeichnen von Feiertagen scheitert zuverlässig genau bei der ersten
+Sticky-Note, mit einem Fehler von `createStickyNote` zum Farbnamen. **Was
+dann zu tun ist:** in `src/stickyColors.js` versuchsweise `green` statt
+`dark_green`/`light_green` eintragen, und den Hex-Wert entsprechend auf den
+tatsächlichen Ton von `green` korrigieren.
+
 ## Connector auf ein Item innerhalb einer Group
 
 Die Referenz sagt nicht, ob das erlaubt ist. Statt zu messen, beantwortet

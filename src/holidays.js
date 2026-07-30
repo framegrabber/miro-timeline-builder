@@ -185,6 +185,14 @@ export function planBands(entries, year, { selected, names }) {
 
     for (const entry of entries) {
         for (const code of entry.codes) {
+            // Exact match only, unlike appliesTo above: a school holiday is
+            // always state-level, so a child-coded entry (there is no such
+            // thing today - see the module comment) would have no sensible
+            // band row to live in. Resolving it would need a parent lookup
+            // and would produce an "Augsburg" row for a state-wide break,
+            // which is worse than the alternative. This deliberately
+            // disagrees with appliesTo's rule above, in the same file;
+            // written down here so the disagreement is a choice, not a bug.
             if (!selected.includes(code)) continue;
 
             const state = names.get(code)?.name ?? code;

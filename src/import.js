@@ -125,28 +125,41 @@ async function removePreviousImport(entry) {
 
     setStatus('Removing previous import...', true);
 
-    // A per-id failure here is not one thing. getById or remove throwing
-    // after run() exhausts its retries on a rate limit means the call never
-    // completed - the bar's fate is unknown, not decided - while any other
-    // throw means the bar is genuinely gone (deleted by hand, by undo, or
-    // just removed by the call above). Collapsing both into "gone", as this
-    // used to, cleared vacationItemIds unconditionally: a bar that only hit a
-    // transient rate limit was left on the board with its one handle
+    // A per-id failure here is not one thing, and getById and remove must be
+    // judged separately rather than caught together. For getById, a rate
+    // limit means the call never completed - the bar's fate is unknown, not
+    // decided - while any other throw means the bar is genuinely gone
+    // (deleted by hand, by undo). But reaching remove means getById already
+    // succeeded: the item demonstrably exists, so any failure there - not
+    // only a rate limit - leaves a bar still on the board, and the id must be
+    // kept regardless of what kind of failure it was. Collapsing both calls
+    // into one try, as this used to, judged a failed remove by the same
+    // "only a rate limit keeps it" rule as getById: a bar that failed to
+    // remove for any other reason was left on the board with its one handle
     // discarded, so every later import stacked a duplicate on top of it.
-    // Keeping the rate-limited ids here, and only ever dropping ids that are
-    // confirmed gone or were actually removed, is the same distinction
-    // anchors.js's measure() makes for the equivalent failure.
+    // Same distinction anchors.js's measure() makes for the equivalent
+    // failure, and holidayDraw.js's own id-removal loop next door.
     const remaining = [];
 
     for (const id of ids) {
+        let item;
         try {
-            const item = await run(() => board.getById(id));
-            await run(() => board.remove(item));
+            item = await run(() => board.getById(id));
         } catch (error) {
-            if (isRateLimitError(error)) {
-                remaining.push(id);
-            }
-            // else: already gone, by hand or by undo - drop it.
+            // Only a rate limit leaves the item's fate unknown; anything else
+            // means it is genuinely gone - deleted by hand, or by undo.
+            if (isRateLimitError(error)) remaining.push(id);
+            continue;
+        }
+
+        try {
+            await run(() => board.remove(item));
+        } catch {
+            // getById just succeeded, so this item is on the board whatever
+            // went wrong here. Dropping its id would orphan something we can
+            // see, so a failed remove keeps the id regardless of what kind of
+            // failure it was - unlike getById, no outcome here means "gone".
+            remaining.push(id);
         }
     }
 

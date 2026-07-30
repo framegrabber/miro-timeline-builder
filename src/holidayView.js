@@ -158,10 +158,10 @@ async function runHolidays() {
             console.error('Could not update the TODAY indicator:', error);
         }
 
-        logStats(calendar, planned.stickies.length, drawn.itemIds.length);
+        logStats(calendar, planned.stickies.length, drawn.createdCount);
 
         if (problems.length > 0) {
-            setStatus(`Drawn, with notes:`, false);
+            setStatus(`${drawn.createdCount} items drawn, with notes:`, false);
             showProblems(problems);
             return;
         }
