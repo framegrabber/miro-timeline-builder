@@ -42,7 +42,13 @@ async function getList(target, fetchFn) {
         throw new Error(`OpenHolidays answered ${response.status}.`);
     }
 
-    const body = await response.json();
+    let body;
+    try {
+        body = await response.json();
+    } catch (error) {
+        throw new Error(`OpenHolidays sent a response that could not be read: ${error?.message ?? error}`);
+    }
+
     if (!Array.isArray(body)) {
         throw new Error('OpenHolidays sent something that is not a list of entries.');
     }

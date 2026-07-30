@@ -64,6 +64,18 @@ test('a body that is not a list is refused rather than half-used', async () => {
     await assert.rejects(fetchHolidays(2026, { fetchFn }), /OpenHolidays/);
 });
 
+test('a body that cannot be parsed names the service too', async () => {
+    const fetchFn = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+            throw new SyntaxError('Unexpected end of JSON input');
+        },
+    });
+
+    await assert.rejects(fetchHolidays(2026, { fetchFn }), /OpenHolidays/);
+});
+
 test('subdivisions are fetched without a date range', async () => {
     const { urls, fetchFn } = recordingFetch(ok([]));
 
