@@ -23,12 +23,14 @@ export function initHolidayView() {
     document
         .querySelector('.tab[data-view="holidays"]')
         .addEventListener('click', fillStatesOnce);
+    // Delegated, because the checkboxes do not exist until the first tab click.
+    document.getElementById('subdivisions').addEventListener('change', showSelectionCount);
 }
 
 async function fillStatesOnce() {
     if (names) return;
 
-    const select = document.getElementById('subdivisions');
+    const list = document.getElementById('subdivisions');
     setStatus('Loading the list of states...', true);
 
     try {
@@ -45,31 +47,62 @@ async function fillStatesOnce() {
         .filter(([code]) => code.split('-').length === 2)
         .sort((a, b) => (a[1].name < b[1].name ? -1 : 1));
 
-    select.innerHTML = '';
+    // <label class="checkbox"><input><span>…</span></label> is the structure
+    // Mirotone styles: the input is transparent and the box is drawn by
+    // .checkbox span:before, so the span is not optional.
+    list.innerHTML = '';
     for (const [code, state] of states) {
-        const option = document.createElement('option');
-        option.value = code;
-        option.textContent = state.name;
-        select.appendChild(option);
+        const label = document.createElement('label');
+        label.className = 'checkbox';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = code;
+
+        const span = document.createElement('span');
+        span.textContent = state.name;
+
+        label.append(input, span);
+        list.appendChild(label);
     }
 
     setStatus('', false);
-    await preselectFromLastRun(select);
+    await preselectFromLastRun(list);
+    showSelectionCount();
 }
 
 /** Whatever was drawn last time, so a redraw is one click. */
-async function preselectFromLastRun(select) {
+async function preselectFromLastRun(list) {
     try {
         const calendars = await findCalendars();
         const previous = calendars.find((calendar) => calendar.entry.holidays?.subdivisions?.length);
         if (!previous) return;
 
         const chosen = new Set(previous.entry.holidays.subdivisions);
-        for (const option of select.options) option.selected = chosen.has(option.value);
+        for (const input of list.querySelectorAll('input')) {
+            input.checked = chosen.has(input.value);
+        }
     } catch {
         // A convenience, not a requirement. An empty selection is a fine
         // starting state, and the draw below reports its own failures.
     }
+}
+
+/**
+ * The list scrolls, so a state checked above the fold is otherwise invisible -
+ * and the common case is redrawing with last time's selection still ticked.
+ */
+function showSelectionCount() {
+    const count = pickedStates().length;
+
+    document.getElementById('subdivisionCount').textContent =
+        count === 0 ? 'No state picked yet.'
+        : count === 1 ? '1 state picked.'
+        : `${count} states picked.`;
+}
+
+function pickedStates() {
+    return [...document.querySelectorAll('#subdivisions input:checked')].map((input) => input.value);
 }
 
 async function runHolidays() {
@@ -79,7 +112,7 @@ async function runHolidays() {
     // (fillStatesOnce). If that fetch is still in flight, failed, or somehow
     // never ran, `names` is null and planStickies/planBands would fail in a
     // way that means nothing to whoever reads the message. In practice the
-    // <select> only ever gets options once `names` is set, so this mostly
+    // list only ever gets checkboxes once `names` is set, so this mostly
     // guards a case the "pick a state" check below would already catch - but
     // it says so plainly instead of relying on that ordering by accident.
     if (!names) {
@@ -87,8 +120,7 @@ async function runHolidays() {
         return;
     }
 
-    const select = document.getElementById('subdivisions');
-    const selected = [...select.selectedOptions].map((option) => option.value);
+    const selected = pickedStates();
 
     if (selected.length === 0) {
         setStatus('Pick at least one federal state.', false);

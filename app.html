@@ -183,12 +183,17 @@
                 <fieldset class="section">
                     <div class="h4 section-title">German Holidays</div>
                     <div class="form-group form-group-small">
-                        <label for="subdivisions">Which federal states?</label>
-                        <select class="select select-small" id="subdivisions" multiple size="8"></select>
+                        <!-- A checkbox list, not a multiple <select>: Mirotone's
+                             .select is a fixed-height single-line dropdown that
+                             overrides the size attribute, so a multiple one shows
+                             exactly one row. Checkboxes also spare the Cmd-click,
+                             which a misclick would otherwise undo. -->
+                        <label id="subdivisionsLabel">Which federal states?</label>
+                        <div id="subdivisions" class="state-list" role="group" aria-labelledby="subdivisionsLabel"></div>
+                        <p id="subdivisionCount" class="p-small vacation-hint" role="status" aria-live="polite"></p>
                         <p class="p-small vacation-hint">
                             Public holidays and school breaks come from
                             <a href="https://www.openholidaysapi.org/" target="_blank" rel="noopener">OpenHolidays</a>.
-                            Hold Cmd or Ctrl to pick more than one state.
                         </p>
                     </div>
                     <div class="form-group form-group-small hidden" id="holidayCalendarChoice">

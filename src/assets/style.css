@@ -117,6 +117,25 @@ body {
   color: var(--gray-600, #5f6368);
 }
 
+/* Sixteen states in a column would push the Draw button far below the fold, so
+   the list gets its own scroll area - roughly eight rows tall. Mirotone has no
+   component for this: .select is a fixed-height single-line dropdown whose
+   height overrides the size attribute, which is why a multiple one showed
+   exactly one row. The count line under the list is what keeps a state checked
+   above the fold from being invisible. */
+.state-list {
+  max-height: 216px;
+  overflow-y: auto;
+  padding: var(--space-small) var(--space-small) var(--space-xsmall);
+  border: 1px solid var(--indigo400, #c3c2cf);
+  border-radius: var(--border-radius-medium, 4px);
+  background-color: var(--white, #fff);
+}
+
+.state-list .checkbox:last-child {
+  margin-bottom: 0;
+}
+
 .import-problems {
   margin: var(--space-xsmall) 0 0;
   padding-left: var(--space-medium);
