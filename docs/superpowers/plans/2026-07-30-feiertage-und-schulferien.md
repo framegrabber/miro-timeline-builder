@@ -1451,92 +1451,103 @@ git commit -m "makes every day cell reachable through the calendar group"
 
 ---
 
-### Task 6: Zwei Board-Fragen beantworten, die die Referenz offenlässt
+### Task 6: Die zwei offenen Board-Fragen vorläufig beantworten
 
-Der Spec hält beide fest. Sie werden gemessen, nicht geraten — genauso wie damals die Frage, ob sich ein Group-Mitglied noch verschieben lässt.
+Der Spec wollte beide am Board messen. Der Auftraggeber hat entschieden, stattdessen mit belegten Annahmen weiterzubauen und beim ersten echten Zeichnen zu korrigieren. Diese Task hält fest, worauf die Annahmen beruhen und woran man merkt, dass sie falsch waren.
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-07-30-board-probe.md`
+- Create: `src/stickyColors.js`
+- Create: `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`
 
 **Interfaces:**
-- Produces: die beiden Hex-Werte für `NATIONWIDE_CELL` und `REGIONAL_CELL` in Task 7, plus die Antwort, ob Task 7 die Zelle direkt als Connector-Ziel nutzen darf.
+- Produces: `HOLIDAY_COLORS` aus `src/stickyColors.js`:
+  ```js
+  {
+    nationwide: { sticky: 'dark_green', cell: '#93D275' },
+    regional:   { sticky: 'light_green', cell: '#D5F692' },
+  }
+  ```
 
-- [ ] **Step 1: Run the probe in the browser console of an open Miro board**
-
-Ein Board öffnen, auf dem ein Kalender gezeichnet ist, die Entwicklerkonsole öffnen und einfügen. Der `async`-IIFE-Rahmen ist nötig, weil Safari kein Top-Level-`await` in der Konsole erlaubt:
+- [ ] **Step 1: Write `src/stickyColors.js`**
 
 ```js
-(async () => {
-  const b = miro.board;
-
-  const green = await b.createStickyNote({
-    content: '<p><b>PROBE nationwide</b></p>', x: 0, y: 0, width: 200,
-    style: { fillColor: 'green' },
-  });
-  const light = await b.createStickyNote({
-    content: '<p><b>PROBE regional</b></p><p>BW, BY</p>', x: 260, y: 0, width: 200,
-    style: { fillColor: 'light_green' },
-  });
-  console.log('sticky styles', JSON.stringify(green.style), JSON.stringify(light.style));
-
-  // Question 2: may a connector end on an item that sits inside a group?
-  const cells = await b.get({ type: 'shape' });
-  const inGroup = cells.find((c) => c.groupId);
-  console.log('found a grouped shape:', Boolean(inGroup), inGroup?.id);
-
-  try {
-    const c = await b.createConnector({
-      shape: 'straight',
-      start: { item: green.id, snapTo: 'bottom' },
-      end: { item: inGroup.id, snapTo: 'top' },
-      style: { strokeStyle: 'normal', strokeWidth: 1, strokeColor: '#000000', endStrokeCap: 'arrow' },
-    });
-    console.log('CONNECTOR INTO GROUP: OK', c.id);
-  } catch (e) {
-    console.log('CONNECTOR INTO GROUP: REFUSED', e?.message ?? e);
-  }
-})();
+/**
+ * The two greens a holiday is drawn in, and the hex that goes with each.
+ *
+ * Sticky notes take only Miro's named palette, shapes take any hex - so the
+ * day cell has to be told, in hex, what Miro renders the sticky as. The Web
+ * SDK reports only the name back, never the colour, so these hex values cannot
+ * be read out of the SDK at all.
+ *
+ * UNVERIFIED. They come from Miro's community colour table rather than from a
+ * real board (see docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md).
+ * `dark_green` is the true green of the design mock-up; `green` in Miro's
+ * naming is an olive that does not match it. If the cell and its sticky look
+ * like two different colours on the board, this file is the only place to fix,
+ * and nothing else has to change.
+ */
+export const HOLIDAY_COLORS = {
+    // Applies in every federal state - the stronger of the two.
+    nationwide: { sticky: 'dark_green', cell: '#93D275' },
+    // Applies in some states only, or in one city.
+    regional: { sticky: 'light_green', cell: '#D5F692' },
+};
 ```
 
-- [ ] **Step 2: Read the two greens off the board**
+- [ ] **Step 2: Write the note that says what is unverified and how to fix it**
 
-Die beiden Probe-Stickies auf dem Board anschauen und ihre Füllfarbe mit dem Farbwähler bzw. einem Screenshot-Pipetten-Werkzeug ablesen. Das sind die Hex-Werte, die die Tageszelle bekommt, damit Sticky und Marke als Paar wirken. Miro nennt in `style.fillColor` nur den Namen, nicht das Hex — deshalb wird abgelesen statt ausgelesen.
-
-- [ ] **Step 3: Write the findings down**
-
-Create `docs/superpowers/notes/2026-07-30-board-probe.md`:
+Create `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`:
 
 ```markdown
-# Board-Probe: Connector in eine Group, Sticky-Grün
+# Offen: Sticky-Grün und Connector in eine Group
 
 **Datum:** 2026-07-30
-**Board:** <URL des Boards, auf dem gemessen wurde>
+**Status:** bewusst ungeprüft, wird beim ersten echten Zeichnen korrigiert
 
-## Darf ein Connector auf ein Item innerhalb einer Group zeigen?
+Der Spec sah vor, beides auf einem Board zu messen. Entschieden wurde, mit
+belegten Annahmen weiterzubauen.
 
-<OK oder REFUSED, plus die Fehlermeldung falls REFUSED>
+## Sticky-Grün
 
-Falls REFUSED: die Tagesmarke braucht eine eigene, unsichtbare Ziel-Shape wie
-der TODAY-Anker in today.js, und Task 7 legt sie zusätzlich zur umgefärbten
-Zelle an.
+Sticky-Notes nehmen nur Miros benannte Palette, Shapes nehmen Hex. Damit
+Tagesmarke und Sticky als Paar wirken, muss das Hex zu dem passen, was Miro
+für den Namen rendert — und das gibt das SDK nicht heraus.
 
-## Miros gerendertes Grün
+Angenommen, aus Miros Community-Farbtabelle:
 
-| Sticky-Farbe | abgelesenes Hex |
-|---|---|
-| `green` | <#…> |
-| `light_green` | <#…> |
+| SDK-Name | angenommenes Hex | Ton |
+|---|---|---|
+| `dark_green` | `#93D275` | echtes Grün, entspricht dem Mockup |
+| `light_green` | `#D5F692` | blasses Gelbgrün |
+| `green` | ~`#D0E17A` | Olive — **nicht** benutzt, passt nicht zum Mockup |
+
+**Woran man merkt, dass es falsch war:** Tagesmarke und zugehöriges Sticky
+sehen auf dem Board unterschiedlich aus. **Wo es zu reparieren ist:**
+ausschließlich `src/stickyColors.js`.
+
+## Connector auf ein Item innerhalb einer Group
+
+Die Referenz sagt nicht, ob das erlaubt ist. Statt zu messen, beantwortet
+`holidayDraw.js` die Frage zur Laufzeit: es versucht zuerst die Tageszelle und
+weicht bei einer Ablehnung auf eine unsichtbare Ankershape an derselben Stelle
+aus — dasselbe Mittel, mit dem `today.js` seine gepunktete Linie enden lässt.
+Welcher Weg genommen wurde, steht danach in der Konsole.
+
+**Woran man merkt, welcher Fall eintrat:** die Meldung
+`Timeline Builder: connectors cannot end inside a group, using anchors instead`
+erscheint genau dann, wenn Miro abgelehnt hat.
 ```
 
-- [ ] **Step 4: Clean the probe items off the board**
+- [ ] **Step 3: Verify the build**
 
-Die drei Probe-Items (zwei Stickies, ggf. ein Connector) von Hand löschen.
+Run: `npm run build && npm test`
+Expected: beides erfolgreich; `stickyColors.js` wird noch von niemandem importiert, das ist in Ordnung.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add docs/superpowers/notes/2026-07-30-board-probe.md
-git commit -m "records what the SDK reference leaves open about groups and sticky colours"
+git add src/stickyColors.js docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md
+git commit -m "pins the two holiday greens in one place, marked unverified"
 ```
 
 ---
@@ -1547,12 +1558,12 @@ git commit -m "records what the SDK reference leaves open about groups and stick
 - Create: `src/holidayDraw.js`
 
 **Interfaces:**
-- Consumes: `board`, `run`, `isRateLimitError` aus `src/board.js`; `updateCalendar` aus `src/anchors.js`; `xOfColumn`, `widthOfColumns`, `dayBlocks` aus `src/calendar.js`; `dayColor` aus `src/colors.js`; `layoutBlock`, `offsetOverlapping` aus `src/holidays.js`
+- Consumes: `board`, `run`, `isRateLimitError` aus `src/board.js`; `updateCalendar` aus `src/anchors.js`; `xOfColumn`, `widthOfColumns`, `dayBlocks` aus `src/calendar.js`; `dayColor` aus `src/colors.js`; `layoutBlock`, `offsetOverlapping` aus `src/holidays.js`; `HOLIDAY_COLORS` aus `src/stickyColors.js`
 - Produces:
   - `drawHolidays(calendar, cells, {stickies, rows}) → Promise<{itemIds: string[], markedColumns: number[], reservedRows: number}>` — die gewählten Bundesländer schreibt der Aufrufer selbst in AppData, sie interessieren das Zeichnen nicht
   - `removeHolidays(calendar, cells) → Promise<void>`
 
-Die Hex-Werte aus Task 6 einsetzen. Ist die Antwort dort REFUSED, endet der Connector statt auf `cells[column]` auf einer zusätzlichen unsichtbaren Shape an derselben Stelle, deren Id ebenfalls in `itemIds` wandert.
+Die Farben kommen aus `src/stickyColors.js` (Task 6). Ob ein Connector auf ein Item innerhalb einer Group zeigen darf, sagt die Referenz nicht — statt es vorher zu messen, beantwortet der Code die Frage zur Laufzeit: erst die Zelle versuchen, bei Ablehnung einmalig auf unsichtbare Ankershapes umschalten und das melden.
 
 - [ ] **Step 1: Write `src/holidayDraw.js`**
 
@@ -1562,17 +1573,33 @@ import { updateCalendar } from './anchors.js';
 import { xOfColumn, widthOfColumns, dayBlocks } from './calendar.js';
 import { dayColor } from './colors.js';
 import { layoutBlock, offsetOverlapping } from './holidays.js';
-
-// From the board probe in docs/superpowers/notes/2026-07-30-board-probe.md:
-// the hex Miro actually renders for these two sticky colours, so the day cell
-// and its sticky read as a pair rather than as two different greens.
-const STICKY_NATIONWIDE = 'green';
-const STICKY_REGIONAL = 'light_green';
-const CELL_NATIONWIDE = '#REPLACE_FROM_PROBE';
-const CELL_REGIONAL = '#REPLACE_FROM_PROBE';
+import { HOLIDAY_COLORS } from './stickyColors.js';
 
 const LINE_COLOR = '#000000';
 const LINE_WIDTH = 1;
+
+// Anchor for the fallback path below: present, invisible, draggable - the same
+// trick today.js uses to give its dotted line something to end on.
+const ANCHOR_SIZE = 8;
+
+function colorsFor(sticky) {
+    return sticky.nationwide ? HOLIDAY_COLORS.nationwide : HOLIDAY_COLORS.regional;
+}
+
+function connect(fromId, toId) {
+    return run(() => board.createConnector({
+        shape: 'straight',
+        start: { item: fromId, snapTo: 'bottom' },
+        end: { item: toId, snapTo: 'top' },
+        style: {
+            strokeStyle: 'normal',
+            strokeWidth: LINE_WIDTH,
+            strokeColor: LINE_COLOR,
+            startStrokeCap: 'none',
+            endStrokeCap: 'arrow',
+        },
+    }));
+}
 
 /**
  * Paints the holiday block onto one calendar.
@@ -1605,7 +1632,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         // 1. The day cells.
         for (const sticky of placed) {
             const cell = cells[sticky.column];
-            cell.style.fillColor = sticky.nationwide ? CELL_NATIONWIDE : CELL_REGIONAL;
+            cell.style.fillColor = colorsFor(sticky).cell;
             await run(() => cell.sync());
             markedColumns.push(sticky.column);
         }
@@ -1637,6 +1664,15 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         }
 
         // 3. The stickies and their connectors.
+        //
+        // The reference does not say whether a connector may end on an item
+        // that sits inside a group, and the day cells all do. Rather than
+        // assume either way, the first one tries the cell directly; if Miro
+        // refuses, every connector from then on ends on an invisible anchor
+        // placed over the cell instead. The flag is sticky for the whole draw
+        // so the answer costs one rejected call, not one per holiday.
+        let connectDirectly = true;
+
         for (const sticky of placed) {
             const subtitle = sticky.subtitle ? `<p>${sticky.subtitle}</p>` : '';
             const note = await run(() => board.createStickyNote({
@@ -1645,26 +1681,44 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
                 y: layout.stickyCenterY,
                 width: layout.stickySize,
                 style: {
-                    fillColor: sticky.nationwide ? STICKY_NATIONWIDE : STICKY_REGIONAL,
+                    fillColor: colorsFor(sticky).sticky,
                     textAlign: 'center',
                     textAlignVertical: 'middle',
                 },
             }));
             created.push(note);
 
-            const connector = await run(() => board.createConnector({
-                shape: 'straight',
-                start: { item: note.id, snapTo: 'bottom' },
-                end: { item: cells[sticky.column].id, snapTo: 'top' },
-                style: {
-                    strokeStyle: 'normal',
-                    strokeWidth: LINE_WIDTH,
-                    strokeColor: LINE_COLOR,
-                    startStrokeCap: 'none',
-                    endStrokeCap: 'arrow',
-                },
+            const cell = cells[sticky.column];
+
+            if (connectDirectly) {
+                try {
+                    created.push(await connect(note.id, cell.id));
+                    continue;
+                } catch (error) {
+                    // Only a refusal to point into the group is worth falling
+                    // back from. A rate limit means the call never completed,
+                    // and retrying it as a different shape of call would hide
+                    // that - let it out and be reported like every other one.
+                    if (isRateLimitError(error)) throw error;
+
+                    connectDirectly = false;
+                    console.warn(
+                        'Timeline Builder: connectors cannot end inside a group, using anchors instead',
+                        error
+                    );
+                }
+            }
+
+            const anchor = await run(() => board.createShape({
+                shape: 'rectangle',
+                x: cell.x,
+                y: cell.y,
+                width: ANCHOR_SIZE,
+                height: ANCHOR_SIZE,
+                style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
             }));
-            created.push(connector);
+            created.push(anchor);
+            created.push(await connect(note.id, anchor.id));
         }
     } catch (error) {
         // Record what is actually on the board before letting this out. Without
@@ -1755,12 +1809,10 @@ export async function removeHolidays(calendar, cells) {
 }
 ```
 
-- [ ] **Step 2: Replace the two probe placeholders**
+- [ ] **Step 2: Check that no colour was written twice**
 
-Beide `#REPLACE_FROM_PROBE` durch die in Task 6 abgelesenen Hex-Werte ersetzen.
-
-Run: `grep -n REPLACE_FROM_PROBE src/holidayDraw.js`
-Expected: keine Treffer.
+Run: `grep -n '#[0-9A-Fa-f]\{6\}' src/holidayDraw.js`
+Expected: nur `LINE_COLOR = '#000000'`. Jeder grüne Hexwert gehört nach `src/stickyColors.js`, weil das die eine Datei ist, die korrigiert werden muss, wenn die Annahme falsch war.
 
 - [ ] **Step 3: Verify the build**
 
@@ -2375,7 +2427,8 @@ Durchgehen und korrigieren, wo die Umsetzung vom Spec abgewichen ist. Bekannt sc
 - Der Spec beschreibt die Endpunkte **mit** `subdivisionCode`. Gebaut wird **ohne**: ein Aufruf pro Art für ganz Deutschland, gefiltert wird lokal. Der Abschnitt „Die Datenquelle" ist entsprechend anzupassen, inklusive der Begründung (konstante Zahl von Netzwerkaufrufen, Auswahlwechsel ohne Neuabruf).
 - Der Spec erwähnt `/Subdivisions` nur beiläufig. Es ist ein dritter Aufruf, der beim ersten Öffnen des Tabs passiert und die Namen für die Kürzelzeile liefert — inklusive „Augsburg".
 - Der NRW-Override (`DE-NW` → `NRW`, weil die API `NW` liefert) steht nirgends im Spec.
-- Die Antworten der Board-Probe aus Task 6 gehören in „Offene API-Fragen", die dann keine mehr sind.
+- Die „Offenen API-Fragen" sind nicht beantwortet, sondern verlagert: die Sticky-Grüntöne stehen als belegte Annahme in `src/stickyColors.js`, und die Connector-Frage beantwortet `holidayDraw.js` zur Laufzeit mit einem Rückfallpfad. Der Abschnitt ist entsprechend umzuschreiben, samt Verweis auf `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`.
+- `HOLIDAY_COLORS` nutzt `dark_green`, nicht `green`. Der Spec nennt `green`/`light_green`; Miros `green` ist ein Olivton und trifft das Mockup nicht.
 
 - [ ] **Step 2: Tick every checkbox in this plan that was actually done**
 
@@ -2397,6 +2450,8 @@ Kein Unit-Test deckt das ab; hier wird von Hand geschaut.
 - [ ] In der Hinweisliste fünf Wochenend-Meldungen: Friedensfest, Mariä Himmelfahrt, Tag der Deutschen Einheit, Allerheiligen, 2. Weihnachtsfeiertag. (2026 ist dafür ein besonders unglückliches Jahr — das ist richtig so, kein Fehler.)
 - [ ] Karfreitag und Ostermontag stehen in benachbarten Spalten: die Stickies weichen seitlich aus, die Connectoren laufen schräg.
 - [ ] Zwei Ferienbänder, Bayern über Hessen, verschiedene Pastelltöne, Beschriftung mit echten Datumsangaben.
+- [ ] **Die beiden Grüntöne prüfen.** Tagesmarke und zugehöriges Sticky müssen wie ein Paar aussehen. Tun sie das nicht, sind die angenommenen Hexwerte falsch — zu korrigieren ausschließlich in `src/stickyColors.js`.
+- [ ] **In der Konsole nachsehen, welchen Weg der Connector genommen hat.** Erscheint `connectors cannot end inside a group, using anchors instead`, hat Miro das direkte Ziel abgelehnt und der Rückfallpfad läuft — funktioniert, kostet aber eine unsichtbare Shape pro Feiertag.
 - [ ] Der TODAY-Kreis sitzt über den Stickies.
 - [ ] Kreis von Hand höher ziehen, zehn Minuten warten (oder das Panel neu laden): er bleibt oben, nur x wird nachgeführt.
 - [ ] Erneut zeichnen, diesmal nur Bayern: das Hessen-Band verschwindet, die Tageszellen von Fronleichnam bleiben markiert, kein Duplikat entsteht, der Kreis rückt eine Zeile tiefer.
@@ -2408,12 +2463,13 @@ Kein Unit-Test deckt das ab; hier wird von Hand geschaut.
 
 ## Self-Review dieses Plans
 
-**Spec-Abdeckung.** Jeder Abschnitt des Specs hat einen Task: die tragende Idee (`groupId`) → Task 5; Datenquelle → Task 2; `nationwide` gegen `regionalScope`, lokale Feiertage, Auswahl gegen Anzeige → Task 3; Darstellung und Geometrie → Task 4 und 7; seitliches Ausweichen → Task 4; TODAY-Kreis und `placedY` → Task 9; AppData → Task 7 und 9; Fehlerbehandlung → Task 7 und 8; Tests → Tasks 1–5; die offenen API-Fragen → Task 6.
+**Spec-Abdeckung.** Jeder Abschnitt des Specs hat einen Task: die tragende Idee (`groupId`) → Task 5; Datenquelle → Task 2; `nationwide` gegen `regionalScope`, lokale Feiertage, Auswahl gegen Anzeige → Task 3; Darstellung und Geometrie → Task 4 und 7; seitliches Ausweichen → Task 4; TODAY-Kreis und `placedY` → Task 9; AppData → Task 7 und 9; Fehlerbehandlung → Task 7 und 8; Tests → Tasks 1–5; die offenen API-Fragen → Task 6 und der Rückfallpfad in Task 7.
 
 **Abweichungen vom Spec, die hier bewusst eingebaut sind** und in Task 10 nachgetragen werden:
 
 1. `fetchHolidays` fragt **ohne** `subdivisionCode` ab und filtert lokal. Zwei Aufrufe statt zwei pro Bundesland, und ein Wechsel der Auswahl braucht keinen neuen Abruf.
 2. Ein dritter Aufruf `/Subdivisions` beim ersten Öffnen des Tabs. Er füllt die Auswahlliste mit deutschen Namen und liefert „Augsburg" für die Kürzelzeile des Friedensfests — ohne ihn wäre dort nur `BY-AU` möglich, und die Entscheidung „Kürzel nennt den Ort" ließe sich nicht umsetzen.
 3. `SHORT_NAME_OVERRIDES`: die API liefert `NW`, der Screenshot und jeder deutsche Leser schreiben `NRW`. Ein Eintrag.
+4. Die zwei offenen API-Fragen werden **nicht am Board gemessen**, wie der Spec vorsah — so entschieden. Stattdessen: die Grüntöne als belegte Annahme an genau einer Stelle (`src/stickyColors.js`, `dark_green`/`light_green` statt `green`/`light_green`), und die Connector-Frage als Rückfallpfad zur Laufzeit statt als Vorabmessung. Beides ist in `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md` festgehalten, inklusive der Symptome, an denen man merkt, dass die Annahme falsch war.
 
 **Was dieser Plan bewusst nicht testet.** Board-I/O — `dayCells.js`, `holidayDraw.js`, `holidayView.js` — hat keine Unit-Tests. Das ist dieselbe Grenze wie im Vorgängerplan und der Grund, warum die manuelle Prüfliste oben so ausführlich ist. `dayCellsOf` ist die riskanteste ungetestete Stelle, weil ein falscher Index die Marke auf den falschen Tag setzt; die `cells.length !== totalWorkingDays(year)`-Prüfung ist das, was einen solchen Fehler in eine Verweigerung verwandelt statt in eine stille Falschmarkierung.
