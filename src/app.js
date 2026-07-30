@@ -14,6 +14,7 @@ import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
 import { updateIndicators } from './today.js';
 import { initImportView } from './import.js';
+import { initHolidayView } from './holidayView.js';
 import { dayColor } from './colors.js';
 
 // Initialize year input with current year
@@ -393,13 +394,17 @@ document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => showView(tab.dataset.view));
 });
 
+const VIEWS = ['calendar', 'import', 'holidays'];
+
 function showView(name) {
     document.querySelectorAll('.tab').forEach((tab) => {
         tab.classList.toggle('tab-active', tab.dataset.view === name);
     });
-    document.getElementById('view-calendar').classList.toggle('hidden', name !== 'calendar');
-    document.getElementById('view-import').classList.toggle('hidden', name !== 'import');
+    for (const view of VIEWS) {
+        document.getElementById(`view-${view}`).classList.toggle('hidden', view !== name);
+    }
 }
 
 initImportView();
+initHolidayView();
 

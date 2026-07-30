@@ -16,6 +16,9 @@
                     <div class="tab" data-view="import" role="tab" tabindex="0">
                         <div class="tab-text">Vacation</div>
                     </div>
+                    <div class="tab" data-view="holidays" role="tab" tabindex="0">
+                        <div class="tab-text">Holidays</div>
+                    </div>
                 </div>
             </div>
 
@@ -174,6 +177,31 @@
                 </div>
                 <p id="importStatus" class="p-small draw-status hidden" role="status" aria-live="polite"></p>
                 <ul id="importProblems" class="p-small import-problems hidden"></ul>
+            </div>
+
+            <div id="view-holidays" class="hidden">
+                <fieldset class="section">
+                    <div class="h4 section-title">German Holidays</div>
+                    <div class="form-group form-group-small">
+                        <label for="subdivisions">Which federal states?</label>
+                        <select class="select select-small" id="subdivisions" multiple size="8"></select>
+                        <p class="p-small vacation-hint">
+                            Public holidays and school breaks come from
+                            <a href="https://www.openholidaysapi.org/" target="_blank" rel="noopener">OpenHolidays</a>.
+                            Hold Cmd or Ctrl to pick more than one state.
+                        </p>
+                    </div>
+                    <div class="form-group form-group-small hidden" id="holidayCalendarChoice">
+                        <label for="targetHolidayCalendar">Which calendar?</label>
+                        <select class="select select-small" id="targetHolidayCalendar"></select>
+                    </div>
+                </fieldset>
+
+                <div class="footer-stack">
+                    <button type="button" id="holidaySubmit" class="button button-primary button-small button-wide">Draw Holidays</button>
+                </div>
+                <p id="holidayStatus" class="p-small draw-status hidden" role="status" aria-live="polite"></p>
+                <ul id="holidayProblems" class="p-small import-problems hidden"></ul>
             </div>
         </div>
     </div>
