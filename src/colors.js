@@ -64,3 +64,18 @@ export function stringToColor(str) {
 
     return hslToHex(hue, saturation, lightness);
 }
+
+/**
+ * The Mon-Fri gradient of the day row, indexed by ISO weekday.
+ *
+ * It lives here rather than in app.js because it has two readers now: the draw
+ * that paints a cell in the first place, and the holiday import, which repaints
+ * a cell and later has to put it back. The original colour is recomputed from
+ * this table rather than stored anywhere, so this is the only record of what a
+ * day cell is supposed to look like.
+ */
+export const DAY_COLORS = ['#FFE5CC', '#FFD1A3', '#FFBD7A', '#FFA952', '#FF9529'];
+
+export function dayColor(weekday) {
+    return DAY_COLORS[weekday - 1];
+}

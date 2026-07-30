@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hslToHex, stringToColor } from '../src/colors.js';
+import { hslToHex, stringToColor, DAY_COLORS, dayColor } from '../src/colors.js';
 
 const NAMES = ['Meyer, Anna', 'Meyer, Bernd', 'Schmidt, Clara', 'Ali, Dilan', 'Ötztürk, Emre', ''];
 
@@ -75,6 +75,20 @@ function referenceHslToHex(h, s, l) {
         .map((channel) => Math.round(channel * 255).toString(16).padStart(2, '0'))
         .join('');
 }
+
+test('dayColor maps the ISO weekday onto the Mon-Fri gradient', () => {
+    assert.equal(DAY_COLORS.length, 5);
+    assert.equal(dayColor(1), DAY_COLORS[0], 'Monday');
+    assert.equal(dayColor(5), DAY_COLORS[4], 'Friday');
+});
+
+test('dayColor is what a repainted cell is restored to', () => {
+    // The holiday import recomputes the original fill instead of storing it,
+    // so this mapping is the only record that a cell's colour ever had.
+    for (let weekday = 1; weekday <= 5; weekday++) {
+        assert.match(dayColor(weekday), /^#[0-9A-Fa-f]{6}$/);
+    }
+});
 
 function toHsl(hex) {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);

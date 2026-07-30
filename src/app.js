@@ -14,6 +14,7 @@ import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
 import { updateIndicators } from './today.js';
 import { initImportView } from './import.js';
+import { dayColor } from './colors.js';
 
 // Initialize year input with current year
 document.addEventListener('DOMContentLoaded', () => {
@@ -111,21 +112,19 @@ function drawRow(settings, row, onShapeDrawn) {
 
 const colorMaps = {
   week: ["#8e8be1", "#7e7cc8"],
-  day: ["#FFE5CC", "#FFD1A3", "#FFBD7A", "#FFA952", "#FF9529"], // Mon-Fri orange gradient
   month: ["#8ddebd", "#9df7d2"],
   iteration: ["#d37b97", "#ea88a8"],
   quarter: ["#82adc2", "#a0d5ef"]
 };
+
 function getColor(number, type) {
+    // The day row is keyed by weekday, not by alternating pairs, and it is
+    // shared with the holiday import - see colors.js.
+    if (type === "day") return dayColor(number);
+
     const colors = colorMaps[type];
-    
-    if (type === "day") {
-      // Use weekday (1-5) directly as color index
-      // Subtract 1 since array is 0-based but weekdays are 1-based
-      return colors[number - 1];
-    }
     return number % 2 === 0 ? colors[0] : colors[1];
-  }
+}
 
   
 function drawRectangle(content, color, width, height, x, y){

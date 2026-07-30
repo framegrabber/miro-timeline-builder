@@ -68,6 +68,10 @@ export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = tr
  *   tags stay on the shapes but tagCalendar only runs at draw time, so a
  *   wrongly dropped entry could never be recovered by re-finding it.
  * All three are reported, per the design's error-handling table.
+ *
+ * The resolved calendar also carries `groupId`, taken off the firstDay anchor.
+ * It is undefined for a calendar whose group was dissolved by hand; callers
+ * that need the day cells must handle that (see dayCells.js).
  */
 export async function findCalendars() {
     const stored = await readCalendars();
@@ -185,6 +189,11 @@ async function measure(entry) {
             rowHeight: firstDay.height,
             top: topLeft.y - topLeft.height / 2,
             bottom: firstDay.y + firstDay.height / 2,
+            // Shape.groupId is readonly and already on the anchor we just
+            // fetched, so the whole calendar becomes addressable without a
+            // single byte having been written at draw time - and without a
+            // migration for calendars drawn before this existed.
+            groupId: firstDay.groupId,
         },
         reason: null,
     };
