@@ -14,6 +14,8 @@ import {
     planBands,
     offsetOverlapping,
     layoutBlock,
+    fitFontSize,
+    TEXT_METRICS,
     STICKY_FACTOR,
     STICKY_GAP_FACTOR,
 } from '../src/holidays.js';
@@ -171,8 +173,13 @@ test('the band label carries the real dates, not the clipped ones', () => {
     // Hesse's Christmas break runs 2025-12-22 to 2026-01-10: it starts in the
     // previous year, so the block is clipped to column 0 while the label keeps
     // saying when the break actually is.
+    //
+    // Name and detail are separate because the band draws them as two lines,
+    // the name in bold. The state appears here only as its short code - the
+    // row carries the full name once, at its start.
     assert.equal(christmas.colStart, 0);
-    assert.equal(christmas.label, 'Weihnachtsferien Hessen 22.12.25 - 10.01.26');
+    assert.equal(christmas.label, 'Weihnachtsferien');
+    assert.equal(christmas.detail, 'HE 22.12.25 - 10.01.26');
 });
 
 test('a break lying entirely outside the year is dropped and named', () => {
@@ -307,4 +314,116 @@ test('stickies with no bands beneath them still reserve their own height', () =>
     assert.deepEqual(block.bandCenterYs, []);
     assert.equal(block.stickyCenterY, 1000 - STICKY_GAP_FACTOR * 100 - block.stickySize / 2);
     assert.equal(block.reservedRows, (STICKY_GAP_FACTOR * 100 + block.stickySize) / 100);
+});
+
+// --- fitFontSize -------------------------------------------------------------
+
+test('a short label in a wide band gets the largest size offered', () => {
+    const size = fitFontSize({ width: 3000, height: 100, lines: ['Sommerferien'], max: 33, min: 8 });
+
+    assert.equal(size, 33);
+});
+
+test('a long label shrinks rather than overflowing', () => {
+    const wide = fitFontSize({ width: 3000, height: 100, lines: ['Sommerferien', 'BY 27.07.26 - 07.09.26'], max: 33, min: 8 });
+    const narrow = fitFontSize({ width: 100, height: 100, lines: ['Sommerferien', 'BY 27.07.26 - 07.09.26'], max: 33, min: 8 });
+
+    assert.ok(narrow < wide, `${narrow} should be smaller than ${wide}`);
+});
+
+test('whatever comes back actually fits, at every width a band can have', () => {
+    // This is the property the whole function exists for. Overflow on a Miro
+    // board is silent - the text is cut at the shape's edge with no sign that
+    // anything is missing - so a size that does not fit is worse than a size
+    // that is too small.
+    //
+    // The wrap is re-derived here rather than reusing the module's, and it
+    // wraps between words: a renderer does not split a word, so a word wider
+    // than the line hangs out of the shape. The first version of this test
+    // counted characters instead, passed, and a browser then showed four of
+    // six one-column bands overflowing anyway.
+    const { CHAR_ADVANCE, LINE_HEIGHT, TEXT_INSET } = TEXT_METRICS;
+
+    const rowsNeeded = (line, perLine) => {
+        let rows = 1;
+        let used = 0;
+        for (const word of line.split(' ')) {
+            const needed = used === 0 ? word.length : used + 1 + word.length;
+            if (needed <= perLine) used = needed;
+            else { rows++; used = word.length; }
+        }
+        return rows;
+    };
+
+    for (const lines of [
+        ['Zusätzlicher Ferientag', 'MV 15.05.26 - 15.05.26'],
+        ['Unterrichtsfreier Tag', 'BE 15.05.26 - 15.05.26'],
+        ['Sommerferien', 'BW 30.07.26 - 12.09.26'],
+    ]) {
+        for (const columns of [1, 2, 3, 5, 10, 20, 40]) {
+            const width = columns * 102;
+            const size = fitFontSize({ width, height: 100, lines, max: 33, min: 8 });
+
+            const usableWidth = width * (1 - 2 * TEXT_INSET);
+            const perLine = Math.floor(usableWidth / (size * CHAR_ADVANCE));
+            const longestWord = Math.max(...lines.flatMap((l) => l.split(' ')).map((w) => w.length));
+
+            // The minimum is a floor we accept clipping below, so only sizes
+            // above it are held to the promise.
+            if (size <= 8) continue;
+
+            assert.ok(
+                longestWord <= perLine,
+                `${lines[0]} @ ${columns} col: "${longestWord} chars" does not fit ${perLine} per line at ${size}px`
+            );
+
+            const rows = lines.reduce((n, line) => n + rowsNeeded(line, perLine), 0);
+            assert.ok(
+                rows * size * LINE_HEIGHT <= 100 * (1 - 2 * TEXT_INSET),
+                `${lines[0]} @ ${columns} col: ${size}px wraps to ${rows} lines and overflows`
+            );
+        }
+    }
+});
+
+test('an impossible label gets the minimum rather than nothing', () => {
+    const size = fitFontSize({ width: 20, height: 20, lines: ['x'.repeat(400)], max: 33, min: 8 });
+
+    assert.equal(size, 8);
+});
+
+test('the size scales with the calendar, not with fixed pixels', () => {
+    const lines = ['Pfingstferien', 'BY 26.05.26 - 05.06.26'];
+    const small = fitFontSize({ width: 500, height: 100, lines, max: 33, min: 8 });
+    const large = fitFontSize({ width: 1000, height: 200, lines, max: 66, min: 16 });
+
+    assert.ok(large > small, `${large} should exceed ${small} on a calendar drawn twice the size`);
+});
+
+test('a word wider than the band decides the size, not the total length', () => {
+    // "Unterrichtsfreier" is seventeen characters and does not wrap - a
+    // renderer breaks lines between words, not inside them, so a word that
+    // does not fit hangs out of the shape. Two labels of the same total
+    // length must therefore get different sizes when one of them has a long
+    // word in it.
+    const short = fitFontSize({ width: 100, height: 100, lines: ['ab cd ef gh ij kl'], max: 33, min: 8 });
+    const long = fitFontSize({ width: 100, height: 100, lines: ['Unterrichtsfreier'], max: 33, min: 8 });
+
+    assert.ok(long < short, `${long} should be smaller than ${short}`);
+});
+
+test('wrapping happens between words, so a line is never split mid-word', () => {
+    // Character-count wrapping would fit 'Pfingstferien' (13) into a 14-wide
+    // line together with the next word's first character. Word wrapping does
+    // not, and the extra row it needs is what the height check has to see.
+    const size = fitFontSize({
+        width: 100,
+        height: 100,
+        lines: ['Pfingstferien', 'BE 26.05.26 - 26.05.26'],
+        max: 33,
+        min: 8,
+    });
+    const perLine = Math.floor((100 * 0.8) / (size * 0.5));
+
+    assert.ok(perLine >= 'Pfingstferien'.length, `at ${size}px only ${perLine} chars fit per line`);
 });

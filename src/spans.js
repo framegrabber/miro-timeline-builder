@@ -59,9 +59,13 @@ export function groupIntoRows(placed, { colorOf }) {
         // sort exists to remove. colSpan and then label break every tie that
         // colStart cannot; once all three agree the blocks are identical in
         // content, so no order is observable.
+        // Everything but `key` is carried through, so a caller can attach its
+        // own fields to a block - the school holiday bands add a `detail` line
+        // for the state code and the dates. `label` stays the sortable plain
+        // text every caller has, which is what the tie-break below needs.
         blocks: placed
             .filter((item) => item.key === key)
-            .map(({ colStart, colSpan, label }) => ({ colStart, colSpan, label }))
+            .map(({ key: _rowKey, ...block }) => block)
             .sort((a, b) =>
                 a.colStart - b.colStart ||
                 a.colSpan - b.colSpan ||

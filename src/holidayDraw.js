@@ -2,11 +2,35 @@ import { board, run, isRateLimitError } from './board.js';
 import { updateCalendar, readCalendars } from './anchors.js';
 import { xOfColumn, widthOfColumns, dayBlocks } from './calendar.js';
 import { dayColor } from './colors.js';
-import { layoutBlock, offsetOverlapping } from './holidays.js';
+import { layoutBlock, offsetOverlapping, fitFontSize } from './holidays.js';
 import { HOLIDAY_COLORS } from './stickyColors.js';
 
 const LINE_COLOR = '#000000';
 const LINE_WIDTH = 1;
+
+// How wide the row's name label is, in rowHeights. Three fits
+// "Mecklenburg-Vorpommern" on two lines at a size worth reading.
+const ROW_LABEL_COLUMNS = 3;
+
+// Bounds for the computed band font, as fractions of the calendar's own row
+// height, so they scale with whatever the calendar was drawn at. The upper
+// bound is a third rather than the day row's 1/2.5 because a band carries two
+// lines where a day cell carries one. Below the lower bound text stops being
+// worth reading, and a one-column band with a forty-character label simply
+// cannot have both - it gets the small text, because clipping on a Miro board
+// is silent and leaves no sign that anything is missing.
+const BAND_FONT_MAX = 1 / 3;
+const BAND_FONT_MIN = 1 / 12;
+
+function fitBandFont(width, rowHeight, lines) {
+    return fitFontSize({
+        width,
+        height: rowHeight,
+        lines,
+        max: rowHeight * BAND_FONT_MAX,
+        min: rowHeight * BAND_FONT_MIN,
+    });
+}
 
 // Anchor for the fallback path below: present, invisible, draggable - the same
 // trick today.js uses to give its dotted line something to end on.
@@ -137,11 +161,37 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         for (const row of rows) {
             const y = layout.bandCenterYs[rows.length - 1 - row.index];
 
+            // The state's full name, once, at the start of its row. Every band
+            // repeats only the short code, because on a year-wide calendar
+            // this label is off screen almost all of the time.
+            created.push(await run(() => board.createShape({
+                shape: 'rectangle',
+                content: `<p><b>${escapeHtml(row.key)}</b></p>`,
+                x: grid.startX - grid.padding - ROW_LABEL_COLUMNS * rowHeight / 2,
+                y,
+                width: ROW_LABEL_COLUMNS * rowHeight,
+                height: rowHeight,
+                style: {
+                    fillColor: row.color,
+                    fontFamily: 'open_sans',
+                    fontSize: fitBandFont(ROW_LABEL_COLUMNS * rowHeight, rowHeight, [row.key]),
+                    borderWidth: 0,
+                },
+            })));
+
             for (const block of row.blocks) {
                 const width = widthOfColumns(grid, block.colSpan);
+                const lines = [block.label, block.detail];
+
                 const shape = await run(() => board.createShape({
                     shape: 'rectangle',
-                    content: `<p>${escapeHtml(block.label)}</p>`,
+                    // Two lines: the break's name in bold, then its state code
+                    // and dates. One font size for both - Miro supports <span>
+                    // but not a style attribute on it, so a shape's fontSize is
+                    // uniform and bold is the only emphasis available.
+                    content:
+                        `<p><b>${escapeHtml(block.label)}</b></p>` +
+                        `<p>${escapeHtml(block.detail)}</p>`,
                     x: xOfColumn(grid, block.colStart) + width / 2,
                     y,
                     width,
@@ -149,8 +199,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
                     style: {
                         fillColor: row.color,
                         fontFamily: 'open_sans',
-                        // One centred line, same rule the month row uses.
-                        fontSize: Math.round(rowHeight / 2.5),
+                        fontSize: fitBandFont(width, rowHeight, lines),
                         borderWidth: 0,
                     },
                 }));

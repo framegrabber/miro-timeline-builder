@@ -212,9 +212,22 @@ export function planBands(entries, year, { selected, names }) {
                 key: state,
                 colStart: span.colStart,
                 colSpan: span.colSpan,
+                // Split in two, because the band draws them differently: the
+                // name in bold on its own line, the rest normal below it.
+                //
+                // The state is named by its short code here, not spelled out,
+                // and the row carries the full name once at its start. Twenty
+                // of the 120 bands a full selection produces are one or two
+                // columns wide, and "Zusätzlicher Ferientag
+                // Mecklenburg-Vorpommern 15.05.26 - 15.05.26" is 65 characters
+                // in a box the width of one day - no font size makes that
+                // readable. The code still appears on every band so a band is
+                // attributable when the row's own label has scrolled out of
+                // sight, which on a year-wide calendar is most of the time.
+                label: entry.name,
                 // The real dates, not the clipped ones: a break that starts in
                 // December of the previous year still says so on the board.
-                label: `${where} ${entry.start.format(DATE_FORMAT)} - ${entry.end.format(DATE_FORMAT)}`,
+                detail: `${names.get(code)?.shortName ?? code} ${entry.start.format(DATE_FORMAT)} - ${entry.end.format(DATE_FORMAT)}`,
             });
         }
     }
@@ -292,4 +305,90 @@ export function layoutBlock({ top, rowHeight, gap, bandCount, stickyCount }) {
         stickyCenterY,
         reservedRows: (top - blockTop) / rowHeight,
     };
+}
+
+// How far a character advances, as a fraction of the font size. Measured in a
+// browser against the real labels in Open Sans:
+//
+//   0.458  normal weight, letters      ("Unterrichtsfreier")
+//   0.495  normal weight, digits       ("26.05.26")
+//   0.497  bold                        ("Pfingstferien")
+//
+// The name line is bold and the detail line is mostly digits, so the worst
+// case is right at 0.5. Set to 0.55 for a tenth of headroom, because Miro's
+// own inset and line spacing are not knowable from here and overflow on a
+// board is silent - the text is cut at the shape's edge with nothing to show
+// that anything is missing. The error has to fall on the side of text that is
+// smaller than it needed to be.
+const CHAR_ADVANCE = 0.55;
+
+// Miro's own line spacing, near enough.
+const LINE_HEIGHT = 1.3;
+
+// Miro insets text from the shape's edges. Reserving a tenth on each side
+// keeps the last line off the border.
+const TEXT_INSET = 0.1;
+
+/**
+ * Exported so the test can check that a returned size really fits without
+ * copying these numbers, and so the one place to correct them if a board shows
+ * otherwise is here.
+ */
+export const TEXT_METRICS = { CHAR_ADVANCE, LINE_HEIGHT, TEXT_INSET };
+
+/**
+ * The largest font size at which `lines` still fit inside `width` x `height`.
+ *
+ * Miro shapes have one `fontSize` for the whole shape and no auto-fit, so a
+ * size that is right for a six-week summer break is wrong for a one-day one -
+ * and the band for a one-day break is one column wide. The old fixed
+ * `rowHeight / 2.5` showed nine characters of a sixty-five character label and
+ * clipped the rest, which is what this exists to stop.
+ *
+ * Overflow is invisible on a Miro board: the text is simply cut off at the
+ * shape's edge with no indication that anything is missing. So this errs
+ * downwards, and when even `min` does not fit it returns `min` anyway - small
+ * and complete beats large and truncated.
+ */
+export function fitFontSize({ width, height, lines, max, min }) {
+    const usableWidth = width * (1 - 2 * TEXT_INSET);
+    const usableHeight = height * (1 - 2 * TEXT_INSET);
+    const words = lines.flatMap((line) => line.split(/\s+/).filter(Boolean));
+    const longestWord = Math.max(0, ...words.map((word) => word.length));
+
+    for (let size = Math.floor(max); size > min; size--) {
+        const perLine = Math.max(1, Math.floor(usableWidth / (size * CHAR_ADVANCE)));
+
+        // A word wider than the line does not wrap, it hangs out of the shape.
+        // "Unterrichtsfreier" is seventeen characters, and in a one-column band
+        // it is what decides the size - not the label's total length. Getting
+        // this wrong is how the first attempt still overflowed four of the six
+        // narrowest bands while its own arithmetic said they fit.
+        if (longestWord > perLine) continue;
+
+        const wrapped = lines.reduce((rows, line) => rows + wrapCount(line, perLine), 0);
+
+        if (wrapped * size * LINE_HEIGHT <= usableHeight) return size;
+    }
+
+    return Math.round(min);
+}
+
+/** Greedy word wrap, the way a renderer does it - not length / perLine. */
+function wrapCount(line, perLine) {
+    let rows = 1;
+    let used = 0;
+
+    for (const word of line.split(/\s+/).filter(Boolean)) {
+        const needed = used === 0 ? word.length : used + 1 + word.length;
+
+        if (needed <= perLine) {
+            used = needed;
+        } else {
+            rows++;
+            used = word.length;
+        }
+    }
+
+    return rows;
 }
