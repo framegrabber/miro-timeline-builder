@@ -116,14 +116,19 @@ Die verworfenen Alternativen dazu stehen unten.
 
 ```
 Bundesländer + Kalenderjahr
-   → openHolidays.fetchHolidays()      2 × fetch, kein Board
-   → parse* + plan*                    rein, keine Calls
-   → dayCells.dayCellsOf(calendar)     2 Calls
-   → removePreviousHolidays(entry)     Farben zurück, alte Items weg
-   → holidayDraw.draw(...)             Bänder, Stickies, Connectors, Marken
-   → updateCalendar(id, { holidays })  1 Call
-   → updateIndicators(dayjs())         Kreis rückt über den neuen Block
+   → openHolidays.fetchHolidays()        2 × fetch, kein Board
+   → parse* + plan*                      rein, keine Calls
+   → dayCells.dayCellsOf(calendar)       2 Calls
+   → holidayDraw.removeHolidays(...)     Farben zurück, alte Items weg
+   → holidayDraw.drawHolidays(...)       Bänder, Stickies, Connectors, Marken;
+                                          schreibt itemIds/markedColumns/
+                                          reservedRows selbst nach AppData
+   → holidayDraw.recordHolidays(id, {subdivisions})  1 Call, nur die Auswahl
+   → updateIndicators(dayjs())           Kreis rückt über den neuen Block
 ```
+
+`drawHolidays` schreibt seine eigene Buchführung, nicht der Aufrufer — siehe
+„AppData" unten für die Begründung.
 
 ## Die Datenquelle
 
@@ -131,16 +136,40 @@ Bundesländer + Kalenderjahr
 `access-control-allow-origin: *`, also direkt aus dem Panel-iframe abrufbar.
 
 ```
-GET /PublicHolidays?countryIsoCode=DE&languageIsoCode=DE&subdivisionCode=DE-BY&validFrom=…&validTo=…
-GET /SchoolHolidays?countryIsoCode=DE&languageIsoCode=DE&subdivisionCode=DE-BY&validFrom=…&validTo=…
+GET /PublicHolidays?countryIsoCode=DE&languageIsoCode=DE&validFrom=…&validTo=…
+GET /SchoolHolidays?countryIsoCode=DE&languageIsoCode=DE&validFrom=…&validTo=…
 GET /Subdivisions?countryIsoCode=DE&languageIsoCode=DE
 ```
+
+**Ohne `subdivisionCode`, mit Absicht.** Jeder der beiden ersten Aufrufe fragt
+ganz Deutschland ab; welche Bundesländer gezeichnet werden, entscheidet
+`src/holidays.js` danach lokal, ohne ein weiteres Byte über das Netz. Das hält
+die Zahl der Netzwerkaufrufe bei genau zwei, egal wie viele Bundesländer
+ausgewählt sind, und ein Wechsel der Auswahl braucht keinen neuen Abruf — die
+Antwort steckt schon im Panel.
+
+Der dritte Aufruf, `/Subdivisions`, ist kein Beiwerk, sondern wird tatsächlich
+gebraucht: er läuft einmal, beim ersten Öffnen des Holidays-Tabs, und liefert
+zwei Dinge, die sonst fehlen würden. Erstens die deutschen Namen für die
+Bundesländer-Auswahlliste — die beiden ersten Aufrufe kennen nur Codes wie
+`DE-BY`. Zweitens „Augsburg" für die Kürzelzeile des Friedensfests: ohne
+diesen Aufruf gäbe es dort nur den Rohcode `BY-AU`, und die Entscheidung
+„Kürzel nennt den Ort" (siehe unten) ließe sich gar nicht umsetzen.
 
 Antwortform: `{startDate, endDate, name: [{language, text}], nationwide,
 regionalScope, subdivisions: [{code, shortName}]}`.
 
 Feiertage sind berechnet und reichen beliebig weit; Schulferien sind gepflegt
 und reichen (Stand Juli 2026) bis 2030. Für einen Jahresplaner genug Vorlauf.
+
+### Der NRW-Sonderfall
+
+Die API liefert Nordrhein-Westfalen als `shortName: "NW"` — das ist das
+ISO-3166-2-Kürzel. Jeder deutsche Leser schreibt „NRW". `src/holidays.js`
+korrigiert das mit einer einzigen Override-Zeile,
+`SHORT_NAME_OVERRIDES = { 'DE-NW': 'NRW' }`, statt einer ganzen
+Übersetzungstabelle, weil es der einzige Fall ist, in dem Kürzel und API
+auseinanderlaufen.
 
 ### `nationwide` ist das verlässliche Feld, nicht `regionalScope`
 
@@ -161,6 +190,15 @@ ist. Was in der Kürzelzeile steht, entscheidet sie nicht: dort stehen **alle**
 Länder, in denen der Tag gilt. Sonst stünde bei der Auswahl „nur Bayern" unter
 Allerheiligen immer nur „BY", und die Zeile wäre wertlos.
 
+### Ein Tag mit zwei Feiertagen
+
+Nicht in der ursprünglichen Planung bedacht, aber real: der 1. Mai 2008 war
+gleichzeitig Tag der Arbeit und Christi Himmelfahrt. Die Tageszelle wird trotzdem
+nur einmal eingefärbt — bundesweit gewinnt gegen regional, falls sich beide
+einen Tag teilen —, aber **beide** Stickies werden gezeichnet. Das seitliche
+Ausweichen (siehe unten) trennt sie ohnehin schon optisch, weil zwei Stickies
+über derselben Spalte immer kollidieren würden.
+
 ## Darstellung
 
 Von unten nach oben:
@@ -179,15 +217,28 @@ Von unten nach oben:
 
 ### Was Miro dabei vorgibt
 
-- Sticky-Notes kennen nur eine **feste Farbpalette**, kein Hex. `green` und
-  `light_green` sind die beiden Stufen.
+- Sticky-Notes kennen nur eine **feste Farbpalette**, kein Hex. `dark_green` und
+  `light_green` sind die beiden Stufen — **nicht** `green`: Miros `green` ist ein
+  Olivton und trifft das Mockup nicht (siehe „Die zwei Grüntöne" unten).
 - Sticky-Notes haben **keine Schriftgrößen-Einstellung**. Fett gegen normal
   können wir steuern, groß gegen klein nicht.
 - Sticky-Inhalt erlaubt `<p>`, `<b>`, `<strong>`, `<br>` — genug für Name plus
   Kürzelzeile.
 - Shapes nehmen beliebiges Hex, also kann die Tageszelle den Sticky-Ton treffen.
-  Welches Hex das genau ist, wird am Board abgelesen, nicht geraten (siehe
-  „Offene API-Fragen").
+  Welches Hex das genau ist, steht als belegte Annahme in `src/stickyColors.js`
+  (siehe „Die zwei Grüntöne" unten) — nicht am Board abgelesen, wie ursprünglich
+  geplant.
+
+### Feiertagsnamen werden escaped
+
+`src/holidayDraw.js` escaped `sticky.name`, `sticky.subtitle` und `block.label`,
+bevor sie in `<p>`/`<b>`-Markup eingebettet werden. Das weicht bewusst von
+`src/import.js` ab, das seinen Text unescaped einsetzt — dessen eigener
+Kommentar begründet das aber ausdrücklich damit, dass die Daten der eigene
+SAP-Export des Nutzers sind, und sagt in aller Deutlichkeit, dass das kein
+Präzedenzfall für Daten Dritter ist. Feiertagsnamen kommen dagegen über das Netz
+von einer Drittanbieter-API; ein „&" oder "<" darin würde sonst das Markup
+brechen, in dem Sticky oder Band gebaut sind.
 
 ### Geometrie
 
@@ -260,6 +311,22 @@ Gegen die eigene Absicht vergleichen, nicht gegen den beobachteten Zustand. Für
 `x` bleibt es beim Vergleich gegen `item.x`, denn `x` soll immer dem Datum
 folgen.
 
+### Ein Kreis von vor `placedY`
+
+Ein Indikator, der gezeichnet wurde, bevor dieses Feld existierte, hat schlicht
+keinen `placedY`-Schlüssel — nicht `null`, sondern abwesend. `undefined == null`
+hätte das beim ersten Tick nach dem Deploy als „noch nie geschrieben" gedeutet
+und einen Schreibvorgang erzwungen, der einen von Hand höher gezogenen Kreis
+stillschweigend zerstört hätte.
+
+Der Ausweg: für einen fehlenden `placedY` wird der Wert rekonstruiert, den das
+alte `createIndicator` schon immer geschrieben hat — dieselbe Formel mit
+`reservedRows: 0`. Das ist keine Vermutung, sondern exakt das, was dort stand,
+solange es keine Feiertage gab. Ein Alt-Kreis bleibt also stehen, solange der
+Kalender keine Feiertage zeigt, und rückt trotzdem hoch, sobald welche
+dazukommen. Die Entscheidung sitzt als eigene Funktion `shouldMoveIndicatorY`
+in `src/todayColumn.js`.
+
 ## AppData
 
 Im Kalendereintrag kommt dazu:
@@ -282,6 +349,26 @@ statt zweitbuchhaltet. Eine Spalte überlebt außerdem ein Neuzeichnen des
 Kalenders, eine ID nicht.
 
 Größe: rund 1 KB pro Kalender im 30-KB-Budget.
+
+### Wer `holidays` schreibt
+
+Anders als hier ursprünglich vorgesehen, schreibt nicht der Aufrufer nach dem
+`await` auf `drawHolidays` das ganze `holidays`-Objekt. `drawHolidays` selbst
+schreibt `itemIds`, `markedColumns` und `reservedRows` — sowohl beim Erfolg als
+auch, mit dem bis dahin erreichten Stand, wenn es unterwegs wirft. Der Aufrufer
+(der dritte Tab) ergänzt danach nur noch `subdivisions`, über eine eigens dafür
+exportierte `recordHolidays(calendarId, changes)`.
+
+Zwei Gründe, beide aus dem Review:
+
+1. `updateCalendar` mergt nur auf der obersten Ebene. Ein `holidays`-Objekt zu
+   übergeben ersetzt das komplette Unterobjekt — und hätte damit IDs gelöscht,
+   die `removeHolidays` bewusst stehen ließ, weil ein Rate-Limit nicht bestätigen
+   konnte, dass das jeweilige Item wirklich weg ist. `recordHolidays` liest den
+   aktuellen Stand deshalb zuerst und mergt hinein.
+2. Den Schreibvorgang dem Aufrufer zu überlassen hieß: ein fehlschlagender
+   Schreibvorgang beim Aufrufer verwaiste alles, was gerade erst gezeichnet
+   wurde — die Items stehen auf dem Board, aber nichts zeigt mehr auf sie.
 
 ## Fehlerbehandlung
 
@@ -334,20 +421,33 @@ Board-I/O wird nicht unit-getestet — dieselbe Grenze wie im Vorgänger-Spec.
    Tab.
 4. **TODAY-Kreis.** `placedY`, Kreis über dem Block.
 
-## Offene API-Fragen
+## Die zwei Grüntöne und der Connector — verlagert statt geklärt
 
-Zwei Dinge werden am echten Board geklärt, nicht aus der Doku — so wie im
-Vorgänger-Spec die Frage, ob sich ein Group-Mitglied noch verschieben lässt:
+Dieser Abschnitt hieß ursprünglich „Offene API-Fragen": zwei Dinge sollten am
+echten Board gemessen werden, so wie im Vorgänger-Spec die Frage, ob sich ein
+Group-Mitglied noch verschieben lässt. Der Auftraggeber hat stattdessen
+entschieden, mit belegten Annahmen weiterzubauen und erst beim ersten echten
+Zeichnen zu korrigieren. Beides ist damit nicht beantwortet, sondern
+verlagert — auf genau eine Stelle im Code, an der sich ein falscher Ausgangswert
+später korrigieren lässt, ohne etwas anderes anzufassen.
 
-1. **Darf ein Connector auf ein Item innerhalb einer Group zeigen?** Die
-   Referenz sagt dazu nichts. Wenn nein, braucht die Tagesmarke doch eine
-   eigene Shape als Connector-Ziel, und die Entscheidung „echte Zelle umfärben"
-   wird für den Connector-Teil zurückgenommen.
-2. **Welches Hex trifft Miros gerendertes `green` und `light_green`?** Damit
-   Sticky und Tagesmarke als Paar wirken.
+1. **Welches Hex trifft Miros gerendertes `dark_green` und `light_green`?**
+   Die Werte stehen als `HOLIDAY_COLORS` in `src/stickyColors.js`, markiert
+   UNVERIFIED, aus Miros Community-Farbtabelle übernommen statt am Board
+   abgelesen. `dark_green` (`#93D275`) ist das echte Grün des Mockups;
+   Miros `green` wäre ein Olivton gewesen und flog deshalb aus der Auswahl.
+2. **Darf ein Connector auf ein Item innerhalb einer Group zeigen?** Die
+   Referenz sagt dazu nichts. Statt es vorab zu messen, beantwortet
+   `src/holidayDraw.js` die Frage zur Laufzeit: der erste Connector versucht die
+   Tageszelle direkt; weist Miro das zurück, schaltet der Rest des Zeichnens auf
+   unsichtbare Ankershapes über derselben Zelle um. Ein Rate-Limit löst diesen
+   Rückfall bewusst **nicht** aus — nur eine echte Ablehnung des Ziels tut das,
+   sonst würde ein vorübergehender Fehler fälschlich als „Group nicht erlaubt"
+   gedeutet. Die Konsole nennt den genommenen Weg.
 
-Beides ist ein Fünf-Minuten-Versuch in Phase 3, aber es steht im Plan und wird
-nicht geraten.
+Beide Annahmen, samt der Symptome, an denen man eine falsche Annahme erkennt,
+stehen in
+[`docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`](../notes/2026-07-30-sticky-colours-unverified.md).
 
 ## Bewusst in Kauf genommen
 

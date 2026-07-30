@@ -70,7 +70,7 @@ Nichts davon berührt das Board. Nach Phase 1 ist die App unverändert benutzbar
   - `placeSpan(year: number, start: Dayjs, end: Dayjs) → {colStart: number, colSpan: number, clipped: boolean} | {problem: 'no-working-day' | 'outside-year'}`
   - `groupIntoRows(placed: Array<{key: string, colStart: number, colSpan: number, label: string}>, options: {colorOf: (key: string) => string}) → Array<{key: string, index: number, color: string, blocks: Array<{colStart, colSpan, label}>}>`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `test/spans.test.js`:
 
@@ -173,12 +173,12 @@ test('groupIntoRows asks colorOf for the key, not for the position', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL, `Cannot find module '.../src/spans.js'`
 
-- [ ] **Step 3: Write `src/spans.js`**
+- [x] **Step 3: Write `src/spans.js`**
 
 ```js
 import { columnOf, nextWorkingDay, previousWorkingDay, totalWorkingDays } from './calendar.js';
@@ -253,12 +253,12 @@ export function groupIntoRows(placed, { colorOf }) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS, alle neuen `spans`-Tests grün, alle vorhandenen weiterhin grün.
 
-- [ ] **Step 5: Rewire `planVacations` onto the shared functions**
+- [x] **Step 5: Rewire `planVacations` onto the shared functions**
 
 Replace `planVacations` in `src/vacation.js` (currently lines 79–144) with:
 
@@ -316,7 +316,7 @@ import { placeSpan, groupIntoRows } from './spans.js';
 import { stringToColor } from './colors.js';
 ```
 
-- [ ] **Step 6: Run the tests — `test/vacation.test.js` must be untouched and green**
+- [x] **Step 6: Run the tests — `test/vacation.test.js` must be untouched and green**
 
 Run: `npm test`
 Expected: PASS. Insbesondere alle 12 Tests aus `test/vacation.test.js`, ohne dass eine Zeile darin geändert wurde. `row.employee` bleibt der Feldname, den `src/import.js` liest.
@@ -324,7 +324,7 @@ Expected: PASS. Insbesondere alle 12 Tests aus `test/vacation.test.js`, ohne das
 Run: `git diff --stat test/vacation.test.js`
 Expected: leere Ausgabe.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/spans.js test/spans.test.js src/vacation.js
@@ -351,7 +351,7 @@ git commit -m "moves the span arithmetic into one shared place"
 
 Ein einziger Aufruf **ohne** `subdivisionCode` liefert alle Bundesländer auf einmal; gefiltert wird in `holidays.js`. Das hält die Zahl der Netzwerkaufrufe konstant, egal wie viele Länder ausgewählt sind, und ein Wechsel der Auswahl braucht keinen neuen Abruf.
 
-- [ ] **Step 1: Record the fixtures**
+- [x] **Step 1: Record the fixtures**
 
 ```bash
 mkdir -p test/fixtures
@@ -376,7 +376,7 @@ Expected: `public 20`, `school 121`, `subdivisions 16`.
 
 Weicht die Zahl ab, ist der Datensatz nachträglich korrigiert worden — genau der Fall, für den die API live abgefragt wird. Die Fixtures dann so übernehmen, wie sie kommen, und in Task 3 die Erwartungen nachziehen; die Tests dort prüfen benannte Einträge, keine Gesamtzahlen.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `test/openHolidays.test.js`:
 
@@ -447,6 +447,18 @@ test('a body that is not a list is refused rather than half-used', async () => {
     await assert.rejects(fetchHolidays(2026, { fetchFn }), /OpenHolidays/);
 });
 
+test('a body that cannot be parsed names the service too', async () => {
+    const fetchFn = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+            throw new SyntaxError('Unexpected end of JSON input');
+        },
+    });
+
+    await assert.rejects(fetchHolidays(2026, { fetchFn }), /OpenHolidays/);
+});
+
 test('subdivisions are fetched without a date range', async () => {
     const { urls, fetchFn } = recordingFetch(ok([]));
 
@@ -458,12 +470,12 @@ test('subdivisions are fetched without a date range', async () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `npm test`
 Expected: FAIL, `Cannot find module '.../src/openHolidays.js'`
 
-- [ ] **Step 4: Write `src/openHolidays.js`**
+- [x] **Step 4: Write `src/openHolidays.js`**
 
 ```js
 /**
@@ -510,7 +522,13 @@ async function getList(target, fetchFn) {
         throw new Error(`OpenHolidays answered ${response.status}.`);
     }
 
-    const body = await response.json();
+    let body;
+    try {
+        body = await response.json();
+    } catch (error) {
+        throw new Error(`OpenHolidays sent a response that could not be read: ${error?.message ?? error}`);
+    }
+
     if (!Array.isArray(body)) {
         throw new Error('OpenHolidays sent something that is not a list of entries.');
     }
@@ -534,17 +552,21 @@ export async function fetchSubdivisions({ fetchFn = fetch } = {}) {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+Das `try` um `response.json()` gehört zum Vertrag aus dem Modul-Kommentar: *jeder* Fehlerpfad kommt als eine benannte `Error` heraus. Ohne es entkäme eine 2xx-Antwort mit kaputtem JSON als roher `SyntaxError` — direkt ins Panel, ungefiltert. Ein Review hat genau das an dieser Stelle gefunden; der Block oben ist bereits die korrigierte Fassung.
+
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/openHolidays.js test/openHolidays.test.js test/fixtures
 git commit -m "adds the OpenHolidays client and recorded fixtures"
 ```
+
+Der Fix für das fehlende `try` um `response.json()` kam als eigener Commit (`0ab97cb names the service when a response body cannot be parsed`), nachdem ein Review die Lücke gefunden hatte.
 
 ---
 
@@ -564,7 +586,7 @@ git commit -m "adds the OpenHolidays client and recorded fixtures"
   - `planStickies(entries, year, {selected, names}) → {stickies: Array<{column: number, name: string, subtitle: string, nationwide: boolean}>, problems: string[]}`
   - `planBands(entries, year, {selected, names}) → {rows: Array<{key, index, color, blocks}>, problems: string[]}`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `test/holidays.test.js`:
 
@@ -766,12 +788,12 @@ test('only the selected states get a band', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL, `Cannot find module '.../src/holidays.js'`
 
-- [ ] **Step 3: Write `src/holidays.js`**
+- [x] **Step 3: Write `src/holidays.js`**
 
 ```js
 import dayjs from 'dayjs';
@@ -991,14 +1013,14 @@ export function planBands(entries, year, { selected, names }) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS
 
 Schlägt `the subtitle names every state the day applies in` fehl, ist die erwartete Zeichenkette an der Fixture zu prüfen — die API liefert die Kürzel unsortiert (`SL,NW,BW,RP,BY`), der Code sortiert sie. Nach dem NRW-Override und der Sortierung ist Fronleichnam `BW, BY, HE, NRW, RP und SL`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/holidays.js test/holidays.test.js
@@ -1022,7 +1044,7 @@ git commit -m "turns holiday data into stickies and bands"
 
 `bandCenterYs` ist von unten indiziert: Index 0 ist das Band direkt am Kalender. Alphabetisch erstes Bundesland kommt nach oben, also auf `bandCenterYs[bandCount - 1 - rowIndex]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `test/holidays.test.js`:
 
@@ -1135,12 +1157,12 @@ test('with no stickies the block ends at the top band', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL, `The requested module '../src/holidays.js' does not provide an export named 'offsetOverlapping'`
 
-- [ ] **Step 3: Append the layout code to `src/holidays.js`**
+- [x] **Step 3: Append the layout code to `src/holidays.js`**
 
 ```js
 // --- layout -----------------------------------------------------------------
@@ -1216,17 +1238,17 @@ export function layoutBlock({ top, rowHeight, gap, bandCount, stickyCount }) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 5: Prove the tests bite**
+- [x] **Step 5: Prove the tests bite**
 
 Change `Math.max(centerXof(sticky.column), previousX + minimumStep)` to `centerXof(sticky.column)` and run `npm test`.
 Expected: FAIL in `neighbouring columns push the later sticky to the right`, `three in a row cascade` — dann rückgängig machen und `npm test` erneut laufen lassen.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/holidays.js test/holidays.test.js
@@ -1257,7 +1279,7 @@ Ab hier wird das Board angefasst. Nach Phase 2 ist noch nichts sichtbar, aber di
   - `calendar.groupId: string | undefined` — neu im Rückgabewert von `findCalendars()`
   - `dayCellsOf(calendar) → Promise<{cells: Item[] | null, reason: null | 'ungrouped' | 'rate-limited' | 'incomplete'}>`
 
-- [ ] **Step 1: Write the failing test for the shared day colours**
+- [x] **Step 1: Write the failing test for the shared day colours**
 
 Append to `test/colors.test.js`:
 
@@ -1279,12 +1301,12 @@ test('dayColor is what a repainted cell is restored to', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test`
 Expected: FAIL, `does not provide an export named 'DAY_COLORS'`
 
-- [ ] **Step 3: Move the day palette into `src/colors.js`**
+- [x] **Step 3: Move the day palette into `src/colors.js`**
 
 Append to `src/colors.js`:
 
@@ -1333,12 +1355,12 @@ function getColor(number, type) {
 
 `DAY_COLORS` wird in `app.js` nicht gebraucht — nur `dayColor` importieren. Die fünf Hex-Werte stehen danach genau einmal im Projekt, in `colors.js`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 5: Expose `groupId` on the resolved calendar**
+- [x] **Step 5: Expose `groupId` on the resolved calendar**
 
 In `src/anchors.js`, inside `measure()`, extend the returned calendar object (currently lines 180–190):
 
@@ -1369,7 +1391,7 @@ Also extend the doc comment of `findCalendars()` — after the `getById itself f
  * that need the day cells must handle that (see dayCells.js).
 ```
 
-- [ ] **Step 6: Write `src/dayCells.js`**
+- [x] **Step 6: Write `src/dayCells.js`**
 
 ```js
 import { board, run, isRateLimitError } from './board.js';
@@ -1430,7 +1452,7 @@ export async function dayCellsOf(calendar) {
 }
 ```
 
-- [ ] **Step 7: Verify the build still compiles**
+- [x] **Step 7: Verify the build still compiles**
 
 Run: `npm run build`
 Expected: erfolgreicher Vite-Build ohne Warnungen zu unaufgelösten Importen.
@@ -1438,7 +1460,7 @@ Expected: erfolgreicher Vite-Build ohne Warnungen zu unaufgelösten Importen.
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/colors.js src/app.js src/anchors.js src/dayCells.js test/colors.test.js
@@ -1468,7 +1490,7 @@ Der Spec wollte beide am Board messen. Der Auftraggeber hat entschieden, stattde
   }
   ```
 
-- [ ] **Step 1: Write `src/stickyColors.js`**
+- [x] **Step 1: Write `src/stickyColors.js`**
 
 ```js
 /**
@@ -1494,7 +1516,7 @@ export const HOLIDAY_COLORS = {
 };
 ```
 
-- [ ] **Step 2: Write the note that says what is unverified and how to fix it**
+- [x] **Step 2: Write the note that says what is unverified and how to fix it**
 
 Create `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`:
 
@@ -1538,12 +1560,12 @@ Welcher Weg genommen wurde, steht danach in der Konsole.
 erscheint genau dann, wenn Miro abgelehnt hat.
 ```
 
-- [ ] **Step 3: Verify the build**
+- [x] **Step 3: Verify the build**
 
 Run: `npm run build && npm test`
 Expected: beides erfolgreich; `stickyColors.js` wird noch von niemandem importiert, das ist in Ordnung.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/stickyColors.js docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md
@@ -1558,18 +1580,27 @@ git commit -m "pins the two holiday greens in one place, marked unverified"
 - Create: `src/holidayDraw.js`
 
 **Interfaces:**
-- Consumes: `board`, `run`, `isRateLimitError` aus `src/board.js`; `updateCalendar` aus `src/anchors.js`; `xOfColumn`, `widthOfColumns`, `dayBlocks` aus `src/calendar.js`; `dayColor` aus `src/colors.js`; `layoutBlock`, `offsetOverlapping` aus `src/holidays.js`; `HOLIDAY_COLORS` aus `src/stickyColors.js`
+- Consumes: `board`, `run`, `isRateLimitError` aus `src/board.js`; `updateCalendar`, `readCalendars` aus `src/anchors.js`; `xOfColumn`, `widthOfColumns`, `dayBlocks` aus `src/calendar.js`; `dayColor` aus `src/colors.js`; `layoutBlock`, `offsetOverlapping` aus `src/holidays.js`; `HOLIDAY_COLORS` aus `src/stickyColors.js`
 - Produces:
-  - `drawHolidays(calendar, cells, {stickies, rows}) → Promise<{itemIds: string[], markedColumns: number[], reservedRows: number}>` — die gewählten Bundesländer schreibt der Aufrufer selbst in AppData, sie interessieren das Zeichnen nicht
+  - `drawHolidays(calendar, cells, {stickies, rows}) → Promise<{itemIds: string[], markedColumns: number[], reservedRows: number}>` — schreibt diese drei Felder selbst in AppData, auf dem Erfolgs- **und** dem Fehlerpfad (siehe unten); der Aufrufer ergänzt nur noch die Bundesländer-Auswahl, über `recordHolidays`
   - `removeHolidays(calendar, cells) → Promise<void>`
+  - `recordHolidays(calendarId, changes) → Promise<void>` — liest den aktuellen `holidays`-Eintrag frisch und mergt `changes` hinein, statt ihn zu ersetzen
 
 Die Farben kommen aus `src/stickyColors.js` (Task 6). Ob ein Connector auf ein Item innerhalb einer Group zeigen darf, sagt die Referenz nicht — statt es vorher zu messen, beantwortet der Code die Frage zur Laufzeit: erst die Zelle versuchen, bei Ablehnung einmalig auf unsichtbare Ankershapes umschalten und das melden.
 
-- [ ] **Step 1: Write `src/holidayDraw.js`**
+**Nachträge aus dem Review** (die ursprüngliche Fassung dieses Blocks — Commit `c8a3d0b` — hatte hier drei Lücken, geschlossen in `e7aadaf fixes six holiday-draw failure paths so nothing on the board goes unrecorded`; der Block unten ist bereits die korrigierte Fassung):
+
+1. **`updateCalendar` mergt nur auf oberster Ebene.** Ein `holidays`-Objekt zu schreiben ersetzt das ganze Unterobjekt — das hätte IDs gelöscht, die `removeHolidays` bewusst stehen ließ, weil ein Rate-Limit nicht bestätigen konnte, dass das Item wirklich weg ist. Deshalb liest `recordHolidays` den aktuellen Stand zuerst und mergt.
+2. **`drawHolidays` schreibt seine eigene Buchführung selbst**, nicht mehr der Aufrufer nach dem `await`. Ein fehlschlagender Schreibversuch beim Aufrufer hätte sonst alles gerade Gezeichnete verwaist zurückgelassen.
+3. **Ein Tag kann zwei Feiertage tragen** (z. B. Tag der Arbeit und Christi Himmelfahrt auf denselben Tag). Die Zelle wird pro Spalte nur einmal eingefärbt, bundesweit gewinnt gegen regional — beide Stickies werden trotzdem gezeichnet, das seitliche Ausweichen trennt sie ohnehin schon.
+4. **HTML-Escaping für Feiertagsnamen**, weil sie von einer Drittanbieter-API übers Netz kommen, anders als der SAP-Export in `import.js` (siehe Spec, Abschnitt „Darstellung").
+5. Die Fallback-Ankershapes werden **nicht** mitgruppiert — würde die Group verschoben, risse sie die Ankershape von der Tageszelle weg, und der Connector zeigte danach auf das falsche Datum.
+
+- [x] **Step 1: Write `src/holidayDraw.js`**
 
 ```js
 import { board, run, isRateLimitError } from './board.js';
-import { updateCalendar } from './anchors.js';
+import { updateCalendar, readCalendars } from './anchors.js';
 import { xOfColumn, widthOfColumns, dayBlocks } from './calendar.js';
 import { dayColor } from './colors.js';
 import { layoutBlock, offsetOverlapping } from './holidays.js';
@@ -1602,19 +1633,63 @@ function connect(fromId, toId) {
 }
 
 /**
+ * Escapes the handful of characters that are significant in HTML.
+ *
+ * This is about rendering correctly in Miro's rich-text renderer - an
+ * unescaped "&" or "<" in a holiday name breaks the markup the sticky or band
+ * is built from - not about XSS in this app's own DOM. Unlike the SAP export
+ * import.js accepts unescaped from the user themselves, holiday names come
+ * from a third-party API over the network, so they get escaped here.
+ */
+function escapeHtml(text) {
+    return String(text)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+/** The stored holiday bookkeeping for one calendar, read fresh, never from the resolved entry's snapshot. */
+async function currentHolidays(calendarId) {
+    const entries = await readCalendars();
+    return entries.find((entry) => entry.calendarId === calendarId)?.holidays ?? {};
+}
+
+/**
+ * Merges into the stored holiday bookkeeping instead of replacing it.
+ *
+ * updateCalendar merges at the top level only, so handing it a `holidays`
+ * object replaces the whole thing. Reading first and spreading here is what
+ * keeps one writer from erasing another's keys - the Bundesland selection the
+ * panel stores, or ids that removeHolidays kept because it could not confirm
+ * they were gone.
+ */
+export async function recordHolidays(calendarId, changes) {
+    const current = await currentHolidays(calendarId);
+    await updateCalendar(calendarId, { holidays: { ...current, ...changes } });
+}
+
+/**
  * Paints the holiday block onto one calendar.
  *
  * Order matters. The day cells are repainted first, because they are the
  * connector targets and because they are the one part that cannot be recovered
  * from an id list if this throws halfway - so the columns are recorded before
  * anything else is created. Everything after that is a new item whose id goes
- * into `created`, and the caller writes that list to AppData even on failure,
- * for the same reason drawRows does: those ids are the only handle that will
- * ever exist on the items that did land.
+ * into `created`; this function itself writes that list to AppData, on both
+ * the success and the failure path, merging it on top of whatever bookkeeping
+ * this calendar already had - a caller that wants to add its own key (the
+ * Bundesland selection, say) does so afterwards with recordHolidays, not by
+ * replacing what was just written.
  */
 export async function drawHolidays(calendar, cells, { stickies, rows }) {
+    const previous = await currentHolidays(calendar.entry.calendarId);
+    const carriedIds = previous.itemIds ?? [];
+
     const { grid, rowHeight, top } = calendar;
     const created = [];
+    const anchors = [];
     const markedColumns = [];
 
     const layout = layoutBlock({
@@ -1628,13 +1703,29 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
     const centerXof = (column) => xOfColumn(grid, column) + grid.shapeWidth / 2;
     const placed = offsetOverlapping(stickies, { centerXof, stickySize: layout.stickySize });
 
+    // Assigned once the creation loops below finish and their own bookkeeping
+    // write succeeds; grouping (after the try/catch) reads it back to return.
+    let bookkeeping;
+
     try {
-        // 1. The day cells.
+        // 1. The day cells. Two holidays can share a working day - 1 May 2008
+        //    was both Tag der Arbeit and Christi Himmelfahrt - so this dedupes
+        //    by column first and lets nationwide win over regional when both
+        //    land on the same day, painting and recording each column once.
+        //    Both stickies are still drawn in step 3; only the cell is shared.
+        const stickiesByColumn = new Map();
         for (const sticky of placed) {
-            const cell = cells[sticky.column];
+            const existing = stickiesByColumn.get(sticky.column);
+            if (!existing || (!existing.nationwide && sticky.nationwide)) {
+                stickiesByColumn.set(sticky.column, sticky);
+            }
+        }
+
+        for (const [column, sticky] of stickiesByColumn) {
+            const cell = cells[column];
             cell.style.fillColor = colorsFor(sticky).cell;
             await run(() => cell.sync());
-            markedColumns.push(sticky.column);
+            markedColumns.push(column);
         }
 
         // 2. The bands. Row index 0 is alphabetically first and belongs on top,
@@ -1646,7 +1737,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
                 const width = widthOfColumns(grid, block.colSpan);
                 const shape = await run(() => board.createShape({
                     shape: 'rectangle',
-                    content: `<p>${block.label}</p>`,
+                    content: `<p>${escapeHtml(block.label)}</p>`,
                     x: xOfColumn(grid, block.colStart) + width / 2,
                     y,
                     width,
@@ -1674,9 +1765,9 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         let connectDirectly = true;
 
         for (const sticky of placed) {
-            const subtitle = sticky.subtitle ? `<p>${sticky.subtitle}</p>` : '';
+            const subtitle = sticky.subtitle ? `<p>${escapeHtml(sticky.subtitle)}</p>` : '';
             const note = await run(() => board.createStickyNote({
-                content: `<p><b>${sticky.name}</b></p>${subtitle}`,
+                content: `<p><b>${escapeHtml(sticky.name)}</b></p>${subtitle}`,
                 x: sticky.x,
                 y: layout.stickyCenterY,
                 width: layout.stickySize,
@@ -1718,28 +1809,60 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
                 style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
             }));
             created.push(anchor);
+            anchors.push(anchor);
             created.push(await connect(note.id, anchor.id));
         }
+
+        bookkeeping = {
+            itemIds: [...carriedIds, ...created.map((item) => item.id)],
+            markedColumns,
+            reservedRows: layout.reservedRows,
+        };
+
+        // Record on success too, not only on failure: today's caller trusts
+        // the return value to be written afterwards, and if that write fails,
+        // everything just drawn would be unreachable. Writing it here, before
+        // the try closes, means a failure of this very write falls into the
+        // same recovery path as everything else below - guarded, then
+        // rethrown - rather than being a second, differently-shaped failure
+        // point. The caller still gets the same object back so it can merge
+        // its own key (subdivisions) with recordHolidays.
+        await recordHolidays(calendar.entry.calendarId, bookkeeping);
     } catch (error) {
         // Record what is actually on the board before letting this out. Without
         // it a retry cannot find the items that did land and stacks more on top
-        // - and the repainted cells would never be restored.
-        await updateCalendar(calendar.entry.calendarId, {
-            holidays: {
-                ...(calendar.entry.holidays ?? {}),
-                itemIds: created.map((item) => item.id),
+        // - and the repainted cells would never be restored. carriedIds keeps
+        // whatever removeHolidays could not confirm was gone moments earlier;
+        // overwriting itemIds with only this draw's created list would lose it.
+        try {
+            await recordHolidays(calendar.entry.calendarId, {
+                itemIds: [...carriedIds, ...created.map((item) => item.id)],
                 markedColumns,
                 reservedRows: layout.reservedRows,
-            },
-        });
+            });
+        } catch (writeError) {
+            // The write itself can fail - a rate-limit burst can exhaust
+            // run()'s retries on a createStickyNote and then on the recovery
+            // write moments later. Report it, but the original error is what
+            // must reach the caller either way: replacing it with the write's
+            // error would mean nothing at all gets recorded or reported.
+            console.error(
+                `Timeline Builder: could not record the partial holiday draw for calendar ${calendar.entry.calendarId}`,
+                writeError
+            );
+        }
         throw error;
     }
 
-    // Bands and stickies are grouped for the mouse; the connectors are left
-    // out. A connector follows its endpoints on its own, so it keeps up when
-    // the group is dragged - and one end of it lives inside the calendar's
-    // group, which is not this group's business.
-    const groupable = created.filter((item) => item.type !== 'connector');
+    // Bands and stickies are grouped for the mouse; the connectors and the
+    // fallback anchors are left out. A connector follows its endpoints on its
+    // own, so it keeps up when the group is dragged. An anchor is invisible
+    // and sits only to give a connector something to end on over a day cell;
+    // if it joined the group, moving the group would drag the anchor off that
+    // cell, and the connector would then point at whatever now sits under it
+    // instead of at the holiday's date - the whole meaning of the drawing.
+    const anchorIds = new Set(anchors.map((item) => item.id));
+    const groupable = created.filter((item) => item.type !== 'connector' && !anchorIds.has(item.id));
     if (groupable.length > 1) {
         try {
             await run(() => board.group({ items: groupable }));
@@ -1753,11 +1876,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
         }
     }
 
-    return {
-        itemIds: created.map((item) => item.id),
-        markedColumns,
-        reservedRows: layout.reservedRows,
-    };
+    return bookkeeping;
 }
 
 /**
@@ -1772,6 +1891,10 @@ export async function removeHolidays(calendar, cells) {
 
     const weekdays = dayBlocks(calendar.year);
 
+    // Columns whose cell.sync() failed and so are still holiday-green. Kept,
+    // not dropped: unlike a shape, a repainted cell cannot be found or
+    // restored by id, only by the column remembered here.
+    const stillPainted = [];
     for (const column of previous.markedColumns ?? []) {
         const cell = cells[column];
         if (!cell) continue;
@@ -1783,6 +1906,7 @@ export async function removeHolidays(calendar, cells) {
             // A cell that cannot be restored stays green. Reported, not fatal:
             // refusing to draw the new block because an old one would not let
             // go leaves the board in a worse state than one stale cell.
+            stillPainted.push(column);
             console.warn(
                 `Timeline Builder: could not restore day cell ${column} on calendar ${calendar.entry.calendarId}`,
                 error
@@ -1792,39 +1916,58 @@ export async function removeHolidays(calendar, cells) {
 
     // Same distinction removePreviousImport makes: a rate limit means the call
     // never completed, so the id must be kept, not dropped. Anything else means
-    // the item is genuinely gone.
+    // the item is genuinely gone. getById and remove are judged separately,
+    // because reaching remove means getById already succeeded - the item
+    // demonstrably exists, so only a rate limit there (not any failure) may
+    // still drop its id.
     const remaining = [];
     for (const id of previous.itemIds ?? []) {
+        let item;
         try {
-            const item = await run(() => board.getById(id));
-            await run(() => board.remove(item));
+            item = await run(() => board.getById(id));
         } catch (error) {
+            // Only a rate limit leaves the item's fate unknown; anything else
+            // means it is genuinely gone - deleted by hand, or by undo.
             if (isRateLimitError(error)) remaining.push(id);
+            continue;
+        }
+
+        try {
+            await run(() => board.remove(item));
+        } catch {
+            // getById just succeeded, so this item is on the board whatever
+            // went wrong here. Dropping its id would orphan something we can
+            // see.
+            remaining.push(id);
         }
     }
 
-    await updateCalendar(calendar.entry.calendarId, {
-        holidays: { ...previous, itemIds: remaining, markedColumns: [], reservedRows: 0 },
+    await recordHolidays(calendar.entry.calendarId, {
+        itemIds: remaining,
+        markedColumns: stillPainted,
+        reservedRows: 0,
     });
 }
 ```
 
-- [ ] **Step 2: Check that no colour was written twice**
+- [x] **Step 2: Check that no colour was written twice**
 
 Run: `grep -n '#[0-9A-Fa-f]\{6\}' src/holidayDraw.js`
 Expected: nur `LINE_COLOR = '#000000'`. Jeder grüne Hexwert gehört nach `src/stickyColors.js`, weil das die eine Datei ist, die korrigiert werden muss, wenn die Annahme falsch war.
 
-- [ ] **Step 3: Verify the build**
+- [x] **Step 3: Verify the build**
 
 Run: `npm run build && npm test`
 Expected: beides erfolgreich.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/holidayDraw.js
 git commit -m "draws the holiday block and takes it back"
 ```
+
+Die Lücken oben (Buchführung, Escaping, Doppel-Feiertag, Anker außerhalb der Group) kamen erst durch ein Review ans Licht und wurden in einem eigenen Folge-Commit geschlossen (`e7aadaf fixes six holiday-draw failure paths so nothing on the board goes unrecorded`), nicht mehr in diesem.
 
 ---
 
@@ -1836,10 +1979,12 @@ git commit -m "draws the holiday block and takes it back"
 - Modify: `src/app.js` (`showView`, Zeilen 397–405, und der Aufruf von `initImportView` in Zeile 405)
 
 **Interfaces:**
-- Consumes: `fetchHolidays`, `fetchSubdivisions` aus `src/openHolidays.js`; alle `parse*`/`plan*` aus `src/holidays.js`; `findCalendars`, `updateCalendar` aus `src/anchors.js`; `dayCellsOf` aus `src/dayCells.js`; `drawHolidays`, `removeHolidays` aus `src/holidayDraw.js`; `updateIndicators` aus `src/today.js`; `takeStats`, `isRateLimitError` aus `src/board.js`
+- Consumes: `fetchHolidays`, `fetchSubdivisions` aus `src/openHolidays.js`; alle `parse*`/`plan*` aus `src/holidays.js`; `findCalendars` aus `src/anchors.js`; `dayCellsOf` aus `src/dayCells.js`; `drawHolidays`, `removeHolidays`, `recordHolidays` aus `src/holidayDraw.js`; `updateIndicators` aus `src/today.js`; `takeStats`, `isRateLimitError` aus `src/board.js`
 - Produces: `initHolidayView() → void`
 
-- [ ] **Step 1: Add the tab and the view to `app.html`**
+Die Buchführung (`itemIds`, `markedColumns`, `reservedRows`) schreibt `drawHolidays` selbst (Task 7); dieser View schreibt nach dem Zeichnen nur noch die Bundesländer-Auswahl nach, über `recordHolidays(calendarId, { subdivisions: selected })` — nicht mehr per eigenem `updateCalendar({ holidays: {...} })`, das die Buchführung überschreiben würde.
+
+- [x] **Step 1: Add the tab and the view to `app.html`**
 
 Replace the `tabs-header-list` block (lines 12–19) with:
 
@@ -1886,7 +2031,7 @@ Insert after the closing `</div>` of `#view-import` (currently line 177), before
             </div>
 ```
 
-- [ ] **Step 2: Teach `showView` about the third view**
+- [x] **Step 2: Teach `showView` about the third view**
 
 Replace `showView` in `src/app.js` (lines 397–403) with:
 
@@ -1916,13 +2061,13 @@ and extend the imports at the top:
 import { initHolidayView } from './holidayView.js';
 ```
 
-- [ ] **Step 3: Write `src/holidayView.js`**
+- [x] **Step 3: Write `src/holidayView.js`**
 
 ```js
 import dayjs from 'dayjs';
 
 import { board, takeStats, isRateLimitError } from './board.js';
-import { findCalendars, updateCalendar } from './anchors.js';
+import { findCalendars } from './anchors.js';
 import { dayCellsOf } from './dayCells.js';
 import { fetchHolidays, fetchSubdivisions } from './openHolidays.js';
 import {
@@ -1932,7 +2077,7 @@ import {
     planStickies,
     planBands,
 } from './holidays.js';
-import { drawHolidays, removeHolidays } from './holidayDraw.js';
+import { drawHolidays, removeHolidays, recordHolidays } from './holidayDraw.js';
 import { updateIndicators } from './today.js';
 
 // Fetched once per panel load and kept: the list of German states does not
@@ -1996,6 +2141,18 @@ async function preselectFromLastRun(select) {
 async function runHolidays() {
     showProblems([]);
 
+    // The subdivision list is fetched once, on the first click of the tab
+    // (fillStatesOnce). If that fetch is still in flight, failed, or somehow
+    // never ran, `names` is null and planStickies/planBands would fail in a
+    // way that means nothing to whoever reads the message. In practice the
+    // <select> only ever gets options once `names` is set, so this mostly
+    // guards a case the "pick a state" check below would already catch - but
+    // it says so plainly instead of relying on that ordering by accident.
+    if (!names) {
+        setStatus('The list of federal states has not finished loading yet. Wait a moment and try again.', false);
+        return;
+    }
+
     const select = document.getElementById('subdivisions');
     const selected = [...select.selectedOptions].map((option) => option.value);
 
@@ -2057,9 +2214,7 @@ async function runHolidays() {
             rows: banded.rows,
         });
 
-        await updateCalendar(calendar.entry.calendarId, {
-            holidays: { subdivisions: selected, ...drawn },
-        });
+        await recordHolidays(calendar.entry.calendarId, { subdivisions: selected });
 
         // The circle sits above this block, so it has to move now rather than
         // at the next tick - same reason drawCalendar kicks it.
@@ -2178,12 +2333,12 @@ function showProblems(problems) {
 }
 ```
 
-- [ ] **Step 4: Verify the build and the tests**
+- [x] **Step 4: Verify the build and the tests**
 
 Run: `npm run build && npm test`
 Expected: beides erfolgreich.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app.html src/app.js src/holidayView.js
@@ -2205,9 +2360,11 @@ git commit -m "adds the Holidays tab"
 
 **Interfaces:**
 - Consumes: `holidays.reservedRows` aus dem Kalendereintrag (Task 7/8)
-- Produces: `indicator.placedY: number | null` im AppData-Eintrag
+- Produces: `indicator.placedY: number | null` im AppData-Eintrag; `shouldMoveIndicatorY(y, placedY, legacyY, nudge) → boolean` aus `src/todayColumn.js`
 
-- [ ] **Step 1: Write the failing test**
+**Nachtrag:** Ein für dieses Feld selbst grundlegendes Problem fiel erst nach dem ersten Durchlauf dieser Task auf und wurde in einem eigenen Folge-Commit geschlossen (`3857a1e reconstructs placedY for indicators drawn before it existed`) — Schritt 3 und 5 unten zeigen bereits die korrigierte Fassung. Für einen Indikator, der gezeichnet wurde, bevor `placedY` existierte, fehlt der Schlüssel schlicht; `undefined == null` hätte beim ersten Tick nach dem Deploy einen Schreibvorgang erzwungen und einen von Hand positionierten Kreis stillschweigend zurückgesetzt. Der Ausweg ist `legacyY`: die Formel, die das alte `createIndicator` schon immer geschrieben hat (`reservedRows: 0`). Ein Alt-Indikator ohne `placedY` vergleicht dagegen statt gegen „schreiben, koste es was es wolle" — er bleibt stehen, solange es keine Feiertage gibt, und rückt trotzdem hoch, sobald welche dazukommen. Die Entscheidung sitzt als eigene, testbare Funktion `shouldMoveIndicatorY` in `src/todayColumn.js`, aus demselben Grund, aus dem `indicatorY` dort liegt statt in `today.js`.
+
+- [x] **Step 1: Write the failing test**
 
 Append to `test/today.test.js`:
 
@@ -2237,12 +2394,69 @@ test('a missing reservedRows counts as none', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+Nachträglich, als die Lücke mit den Alt-Indikatoren auffiel, kamen `shouldMoveIndicatorY` und ihre eigenen Tests dazu (siehe Nachtrag oben und `src/todayColumn.js` unten):
+
+```js
+import { columnForToday, indicatorY, shouldMoveIndicatorY } from '../src/todayColumn.js';
+
+// --- reconstructing placedY for indicators from before it existed ----------
+
+test('the reconstructed placedY is what the pre-holiday code wrote', () => {
+    // createIndicator used top - rowHeight/2 - diameter/2 before reservedRows
+    // existed. An indicator from that era has no placedY, and this is the
+    // value that must stand in for it - otherwise the first tick after the
+    // upgrade overwrites the user's hand-positioned circle.
+    const legacy = indicatorY({ top: 1000, rowHeight: 100, diameter: 160, reservedRows: 0 });
+
+    assert.equal(legacy, 1000 - 50 - 80);
+});
+
+test('a legacy indicator does not move while there are no holidays', () => {
+    const geometry = { top: 1000, rowHeight: 100, diameter: 160 };
+    const wanted = indicatorY({ ...geometry, reservedRows: undefined });
+    const legacy = indicatorY({ ...geometry, reservedRows: 0 });
+
+    assert.equal(wanted, legacy, 'no difference means moveIndicator leaves y alone');
+});
+
+test('a legacy indicator does move once a holiday block exists', () => {
+    const geometry = { top: 1000, rowHeight: 100, diameter: 160 };
+    const wanted = indicatorY({ ...geometry, reservedRows: 5.54 });
+    const legacy = indicatorY({ ...geometry, reservedRows: 0 });
+
+    assert.notEqual(wanted, legacy);
+    assert.ok(wanted < legacy, 'the circle rises above the block');
+});
+
+// --- shouldMoveIndicatorY: the extracted moveIndicator decision -------------
+
+test('shouldMoveIndicatorY falls back to legacyY when placedY is absent', () => {
+    // No holidays: wanted y equals legacyY, so nothing should move.
+    assert.equal(shouldMoveIndicatorY(1000, undefined, 1000, 0.5), false);
+    // Holidays present: wanted y differs from legacyY, so it should move.
+    assert.equal(shouldMoveIndicatorY(900, undefined, 1000, 0.5), true);
+});
+
+test('shouldMoveIndicatorY falls back to legacyY when placedY was cleared to null', () => {
+    // removeIndicator sets placedY to null, not undefined - `??` must catch both.
+    assert.equal(shouldMoveIndicatorY(1000, null, 1000, 0.5), false);
+    assert.equal(shouldMoveIndicatorY(900, null, 1000, 0.5), true);
+});
+
+test('shouldMoveIndicatorY compares against placedY, not the reconstruction, once it is recorded', () => {
+    // A real placedY of 900 means the last write already accounted for holidays.
+    // legacyY (the pre-holiday value) must be ignored once placedY exists.
+    assert.equal(shouldMoveIndicatorY(900, 900, 1000, 0.5), false);
+    assert.equal(shouldMoveIndicatorY(850, 900, 1000, 0.5), true);
+});
+```
+
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npm test`
 Expected: FAIL, `does not provide an export named 'indicatorY'`
 
-- [ ] **Step 3: Add `indicatorY` to `src/todayColumn.js`**
+- [x] **Step 3: Add `indicatorY` to `src/todayColumn.js`**
 
 Es gehört dorthin und nicht in `today.js`, weil `today.js` `board.js` importiert und `board.js` beim Laden `window` liest — ein Test-Import würde unter Node abstürzen. Genau dafür wurde `todayColumn.js` abgespalten.
 
@@ -2258,30 +2472,60 @@ Es gehört dorthin und nicht in `today.js`, weil `today.js` `board.js` importier
 export function indicatorY({ top, rowHeight, diameter, reservedRows }) {
     return top - (reservedRows ?? 0) * rowHeight - rowHeight / 2 - diameter / 2;
 }
+
+/**
+ * Whether moveIndicator should write the circle's y.
+ *
+ * `placedY` is the y *we* last wrote - absent (never recorded) or explicitly
+ * null (cleared by removeIndicator) for any indicator predating that field.
+ * For those, `legacyY` stands in: createIndicator was the only writer of the
+ * circle's y before reservedRows existed, and it always used the no-holidays
+ * formula, so that value IS what was last written, not a guess. Falling back
+ * to it - rather than to "write it anyway" - is what lets a hand-drag from
+ * before this change survive the first tick, while still letting a holiday
+ * block that appeared since push the circle up.
+ */
+export function shouldMoveIndicatorY(y, placedY, legacyY, nudge) {
+    const lastWritten = placedY ?? legacyY;
+    return Math.abs(y - lastWritten) >= nudge;
+}
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 5: Use it in `src/today.js`**
+- [x] **Step 5: Use it in `src/today.js`**
 
 Extend the import:
 
 ```js
-import { columnForToday, indicatorY } from './todayColumn.js';
+import { columnForToday, indicatorY, shouldMoveIndicatorY } from './todayColumn.js';
 ```
 
-In `syncIndicator`, compute the wanted y next to the wanted x and pass both on:
+In `syncIndicator`, compute the wanted y next to the wanted x, plus `legacyY` — the y an indicator predating `placedY` must be assumed to already carry (see the Nachtrag above) — and pass all three on:
 
 ```js
     const x = xOfColumn(grid, column) + grid.shapeWidth / 2;
+    const diameter = calendar.rowHeight * DIAMETER_FACTOR;
     const y = indicatorY({
         top: calendar.top,
         rowHeight: calendar.rowHeight,
-        diameter: calendar.rowHeight * DIAMETER_FACTOR,
+        diameter,
         reservedRows: entry.holidays?.reservedRows,
+    });
+
+    // What createIndicator would have written before placedY (and reservedRows)
+    // existed. A legacy indicator - one with no placedY on record - has no other
+    // way to know what its own y was last set to; this reconstructs it instead
+    // of guessing, so moveIndicator can tell whether the holiday block actually
+    // changed anything.
+    const legacyY = indicatorY({
+        top: calendar.top,
+        rowHeight: calendar.rowHeight,
+        diameter,
+        reservedRows: 0,
     });
 
     if (!entry.indicator.circleId) {
@@ -2289,7 +2533,7 @@ In `syncIndicator`, compute the wanted y next to the wanted x and pass both on:
         return;
     }
 
-    await moveIndicator(entry, x, y);
+    await moveIndicator(entry, x, y, legacyY);
 ```
 
 In `createIndicator`, replace the `centerY` computation with the shared one and record it:
@@ -2339,9 +2583,10 @@ Replace `moveIndicator` with the version that writes y only on a real change:
  * The lower anchor keeps its own y throughout: dragging it down is how the
  * line is made longer, and nothing here may take that back.
  */
-async function moveIndicator(entry, x, y) {
-    const moveY = entry.indicator.placedY == null
-        || Math.abs(y - entry.indicator.placedY) >= NUDGE;
+async function moveIndicator(entry, x, y, legacyY) {
+    // See shouldMoveIndicatorY in todayColumn.js for why a legacy indicator
+    // (no placedY on record) falls back to legacyY instead of just writing y.
+    const moveY = shouldMoveIndicatorY(y, entry.indicator.placedY, legacyY, NUDGE);
 
     const ids = [entry.indicator.circleId, entry.indicator.anchorId];
 
@@ -2392,7 +2637,7 @@ In `removeIndicator`, clear it along with the ids:
     });
 ```
 
-- [ ] **Step 6: Initialise the field in `src/anchors.js`**
+- [x] **Step 6: Initialise the field in `src/anchors.js`**
 
 Replace line 45:
 
@@ -2400,16 +2645,22 @@ Replace line 45:
         indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null, placedY: null },
 ```
 
-- [ ] **Step 7: Run the tests and the build**
+- [x] **Step 7: Run the tests and the build**
 
 Run: `npm test && npm run build`
 Expected: beides erfolgreich. Insbesondere bleibt `the indicator does not move with the clock` aus `test/today.test.js` grün.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/today.js src/todayColumn.js src/anchors.js test/today.test.js
 git commit -m "lifts the TODAY circle above the holiday block"
+```
+
+Die Rekonstruktion über `legacyY`/`shouldMoveIndicatorY` (siehe Nachtrag zu Beginn dieser Task) kam als eigener Folge-Commit dazu, nachdem auffiel, dass `entry.indicator.placedY == null` für einen Alt-Indikator beim ersten Tick nach dem Deploy fälschlich `true` ergeben und einen von Hand positionierten Kreis zurückgesetzt hätte:
+
+```bash
+git commit -m "reconstructs placedY for indicators drawn before it existed"
 ```
 
 ---
@@ -2420,7 +2671,7 @@ git commit -m "lifts the TODAY circle above the holiday block"
 - Modify: `docs/superpowers/specs/2026-07-30-feiertage-und-schulferien-design.md`
 - Modify: `docs/superpowers/plans/2026-07-30-feiertage-und-schulferien.md`
 
-- [ ] **Step 1: Reconcile the spec with what was built**
+- [x] **Step 1: Reconcile the spec with what was built**
 
 Durchgehen und korrigieren, wo die Umsetzung vom Spec abgewichen ist. Bekannt schon jetzt:
 
@@ -2430,9 +2681,9 @@ Durchgehen und korrigieren, wo die Umsetzung vom Spec abgewichen ist. Bekannt sc
 - Die „Offenen API-Fragen" sind nicht beantwortet, sondern verlagert: die Sticky-Grüntöne stehen als belegte Annahme in `src/stickyColors.js`, und die Connector-Frage beantwortet `holidayDraw.js` zur Laufzeit mit einem Rückfallpfad. Der Abschnitt ist entsprechend umzuschreiben, samt Verweis auf `docs/superpowers/notes/2026-07-30-sticky-colours-unverified.md`.
 - `HOLIDAY_COLORS` nutzt `dark_green`, nicht `green`. Der Spec nennt `green`/`light_green`; Miros `green` ist ein Olivton und trifft das Mockup nicht.
 
-- [ ] **Step 2: Tick every checkbox in this plan that was actually done**
+- [x] **Step 2: Tick every checkbox in this plan that was actually done**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers
