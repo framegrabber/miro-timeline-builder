@@ -31,8 +31,15 @@ genau* — und die Antwort darf keine zweite Spaltenrechnung erzeugen.
   schon fest, und es bleibt so. Sonst hinge die Spaltenzahl am Bundesland, jeder
   bereits gezeichnete Kalender würde ungültig, und `columnOf` müsste einen
   Zustand kennen, den es heute nicht hat.
-- **Keine beweglichen Ferientage, keine schulfreien Einzeltage.** Die API kennt
-  sie nicht zuverlässig, und sie sind pro Schule verschieden.
+- ~~**Keine beweglichen Ferientage, keine schulfreien Einzeltage.**~~
+  **Zurückgenommen.** Sie kommen im `SchoolHolidays`-Feed mit, nicht als
+  eigenes Konzept, und nichts filtert sie — „Variabler Ferientag",
+  „Unterrichtsfreier Tag", „Zusätzlicher Ferientag", „Tag nach Himmelfahrt",
+  neun Bänder bei voller Auswahl. Aufgefallen ist es erst, als sie auf dem
+  Board standen. Entschieden wurde, sie zu behalten: sie sind schulfrei und
+  damit für planende Eltern echte Information, auch wenn sie pro Schule
+  verschieden sind. Sie sind zugleich die engsten Bänder überhaupt und der
+  Grund, warum die Schriftgröße berechnet werden muss (siehe „Beschriftung").
 - **Keine anderen Länder.** OpenHolidays liefert auch Österreich und die
   Schweiz. Nicht jetzt.
 - **Kein automatisches Nachziehen im 10-Minuten-Tick.** Der Tick existiert für
@@ -49,7 +56,9 @@ genau* — und die Antwort darf keine zweite Spaltenrechnung erzeugen.
 | Umfang Feiertage | Nur die, die in einem gewählten Land gelten; die Kürzelzeile nennt alle |
 | Lokale Feiertage (Friedensfest) | Werden gezeichnet, Kürzelzeile nennt den Ort statt des Landes |
 | Datenquelle | Live von der OpenHolidays API |
-| UI | Dritter Tab „Holidays" neben Calendar und Vacation |
+| UI | Dritter Tab „Holidays" neben Calendar und Vacation; Bundesländer als Checkbox-Liste |
+| Bandbeschriftung | Zwei Zeilen, Name fett; Landesname einmal je Zeile, Kürzel auf jedem Band |
+| Schriftgröße | Berechnet aus Bandbreite und längstem Wort, nicht fest |
 | Sticky-Kollision | Seitliches Ausweichen, Connector wird schräg |
 | TODAY-Kreis | Rückt über den Feiertagsblock; y wird nur bei echter Änderung geschrieben |
 | Ferienzeilen | Eine Zeile pro Bundesland, alphabetisch von oben gelesen |
@@ -85,7 +94,7 @@ Die verworfenen Alternativen dazu stehen unten.
 | Modul | Aufgabe |
 |---|---|
 | `src/openHolidays.js` | Die einzige Stelle mit `fetch`. Basis-URL, Query-Parameter, Fehlerübersetzung. `fetch` ist injizierbar, damit Tests ohne Netz laufen. |
-| `src/holidays.js` | Rohantwort → Spaltenraum: `parsePublicHolidays`, `parseSchoolHolidays`, `planSchoolBands`, `planStickies`, `offsetOverlapping`, `layoutBlock` |
+| `src/holidays.js` | Rohantwort → Spaltenraum: `parsePublicHolidays`, `parseSchoolHolidays`, `planSchoolBands`, `planStickies`, `offsetOverlapping`, `layoutBlock`, `fitFontSize` |
 | `src/spans.js` | Die aus `vacation.js` herausgelöste Spannen-Platzierung |
 
 ### Neue Module mit Board-Zugriff
@@ -207,13 +216,55 @@ Von unten nach oben:
    stehen. Bundesweit kräftig, landesspezifisch und lokal blass.
 2. **Kalender** — unverändert.
 3. **Ferienbänder** — direkt über dem Kalender, eine Zeile pro Bundesland,
-   alphabetisch von oben gelesen, je eigene Farbe. Beschriftung mittig,
-   einzeilig: `Sommerferien Bayern 27.07.26 - 07.09.26`, mit den echten Daten
-   der API, nicht den aufs Jahr geclippten.
+   alphabetisch von oben gelesen, je eigene Farbe. Zweizeilig beschriftet:
+   `Sommerferien` **fett**, darunter `BY 27.07. - 07.09.` normal. Mit den
+   echten Daten der API, nicht den aufs Jahr geclippten.
+   Am Anfang jeder Zeile, links neben dem Kalender, steht der volle
+   Landesname einmal — siehe „Beschriftung" unten.
 4. **Stickies** — eine Reihe darüber. Farbe passt zur Tagesmarke. Name **fett**,
    darunter normal die Kürzel.
 5. **Connector** — dünn, schwarz, mit Pfeilspitze, vom Sticky auf die
    Tageszelle.
+
+### Beschriftung
+
+Nachgetragen, nachdem die erste Fassung auf einem Board mit allen 16 Ländern
+unlesbar war. Die Schriftgröße stand fest auf `rowHeight / 2.5` — 40 px,
+unabhängig davon, wie breit das Band ist und wie viel darauf steht. Von 120
+Bändern sind 27 ein oder zwei Spalten breit, und das längste Label hatte 65
+Zeichen. Sichtbar waren neun davon; der Rest war abgeschnitten, ohne dass etwas
+darauf hinwies.
+
+Drei Dinge tragen die Lösung:
+
+**Das Label sagt nicht mehr, was das Bild schon sagt.** Die Ausdehnung des
+Bandes *ist* der Zeitraum, also braucht das Datum keine Jahreszahl und ein
+eintägiger Block nennt sein Datum einmal statt zweimal. Und die Zeile *ist* ein
+Bundesland, also steht der volle Name einmal am Zeilenanfang und auf dem Band
+nur das Kürzel. Aus `Zusätzlicher Ferientag Mecklenburg-Vorpommern 15.05.26 -
+15.05.26` (65 Zeichen) wird `Zusätzlicher Ferientag` / `MV 15.05.` (31). Das
+Jahr kommt zurück, sobald ein Block über Silvester läuft, weil `22.12. - 10.01.`
+sonst nicht sagt, welches Ende welches ist.
+
+**Das Kürzel bleibt trotzdem auf jedem Band.** Auf einem jahresbreiten Kalender
+ist die Zeilenbeschriftung fast immer aus dem Bild gescrollt.
+
+**Die Schriftgröße wird berechnet.** `fitFontSize` in `src/holidays.js` sucht
+die größte Größe, bei der der Text noch hineinpasst, und bricht dabei **an
+Wortgrenzen** um — nicht an Zeichen. Das ist der Kern: ein Wort, das breiter
+ist als die Zeile, bricht nicht um, sondern hängt aus der Shape heraus.
+„Unterrichtsfreier" hat 17 Zeichen, und auf einem einspaltigen Band entscheidet
+dieses eine Wort die Größe, nicht die Gesamtlänge. Die erste Fassung zählte
+Zeichen, bestand ihren eigenen Test und ließ trotzdem vier von sechs schmalen
+Bändern überlaufen.
+
+Die Metriken dahinter stehen als `TEXT_METRICS` an einer Stelle, mit den
+gemessenen Werten im Kommentar: Open Sans läuft mit 0,458 em pro Zeichen bei
+Normaltext, 0,495 bei Ziffern und 0,502 fett. Angesetzt sind 0,55 — ein Zehntel
+Reserve, weil Miros eigener Textabstand von außen nicht ermittelbar ist und
+Überlauf auf einem Board **still** ist: der Text wird an der Kante abgeschnitten
+und nichts zeigt an, dass etwas fehlt. Der Fehler muss deshalb auf die Seite
+fallen, auf der die Schrift zu klein ist.
 
 ### Was Miro dabei vorgibt
 
@@ -505,3 +556,17 @@ müsste.
 Screenshots erhalten. Verworfen, weil die Blockhöhe dann von der Zahl der
 Kollisionen abhinge und damit auch die Position des TODAY-Kreises — die soll
 stabil sein.
+
+## Nachtrag: die Bundesländer-Auswahl
+
+Der Plan sah ein `<select multiple size="8">` mit Mirotones `.select` vor. Das
+rendert genau **eine** Zeile: `.select` setzt `height: var(--input-height)`
+(und `.select-small` 36 px) und ist als einzeiliges Dropdown gebaut, mit
+`appearance: none` und einem Pfeil als Hintergrundbild — die feste Höhe
+überschreibt das `size`-Attribut.
+
+Ersetzt durch Mirotones `.checkbox`, sechzehn Stück in einem eigenen
+Scrollbereich von 216 px, mit einer Zeile „N states picked." darunter. Der
+Scrollbereich hält den Draw-Button über der Falz; die Zählzeile macht sichtbar,
+was oberhalb des Sichtfensters angehakt ist. Nebenbei entfällt das Cmd-Klicken,
+bei dem ein Fehlklick die ganze Auswahl löscht.
