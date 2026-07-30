@@ -17,3 +17,15 @@ export function columnForToday(year, today) {
     if (column < 0 || column >= totalWorkingDays(year)) return null;
     return column;
 }
+
+/**
+ * The centre y of the TODAY circle.
+ *
+ * `reservedRows` is what the holiday import wrote into the calendar entry: how
+ * many rowHeights the bands and stickies occupy above the calendar. At zero
+ * this is literally the formula the circle used before holidays existed, which
+ * is why a calendar without them does not move.
+ */
+export function indicatorY({ top, rowHeight, diameter, reservedRows }) {
+    return top - (reservedRows ?? 0) * rowHeight - rowHeight / 2 - diameter / 2;
+}

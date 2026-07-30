@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
-import { columnForToday } from '../src/todayColumn.js';
+import { columnForToday, indicatorY } from '../src/todayColumn.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -116,4 +116,28 @@ test('the indicator does not move with the clock', () => {
     for (const time of ['00:00:01', '09:30:00', '14:32:11', '23:59:59']) {
         assert.equal(columnForToday(2026, dayjs(`2026-07-29T${time}`)), midnight, `at ${time}`);
     }
+});
+
+// --- indicatorY -----------------------------------------------------------
+
+test('with no holidays the circle sits exactly where it always did', () => {
+    // top - rowHeight/2 - diameter/2 was the formula before the holiday block
+    // existed. A calendar without holidays must not move by a pixel.
+    const y = indicatorY({ top: 1000, rowHeight: 100, diameter: 160, reservedRows: 0 });
+
+    assert.equal(y, 1000 - 50 - 80);
+});
+
+test('the circle clears the holiday block', () => {
+    const withBlock = indicatorY({ top: 1000, rowHeight: 100, diameter: 160, reservedRows: 5.54 });
+    const without = indicatorY({ top: 1000, rowHeight: 100, diameter: 160, reservedRows: 0 });
+
+    assert.equal(without - withBlock, 554);
+});
+
+test('a missing reservedRows counts as none', () => {
+    assert.equal(
+        indicatorY({ top: 0, rowHeight: 100, diameter: 160, reservedRows: undefined }),
+        indicatorY({ top: 0, rowHeight: 100, diameter: 160, reservedRows: 0 })
+    );
 });

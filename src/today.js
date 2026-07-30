@@ -1,7 +1,7 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars } from './anchors.js';
-import { columnForToday } from './todayColumn.js';
+import { columnForToday, indicatorY } from './todayColumn.js';
 
 const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
@@ -45,13 +45,19 @@ export async function syncIndicator(calendar, today) {
     }
 
     const x = xOfColumn(grid, column) + grid.shapeWidth / 2;
+    const y = indicatorY({
+        top: calendar.top,
+        rowHeight: calendar.rowHeight,
+        diameter: calendar.rowHeight * DIAMETER_FACTOR,
+        reservedRows: entry.holidays?.reservedRows,
+    });
 
     if (!entry.indicator.circleId) {
         await createIndicator(calendar, x);
         return;
     }
 
-    await moveIndicator(entry, x);
+    await moveIndicator(entry, x, y);
 }
 
 /**
@@ -80,9 +86,16 @@ async function createIndicator(calendar, x) {
     // between the circle's bottom edge and the calendar. Deriving the centre
     // from the diameter, instead of hard-coding that offset, keeps that same
     // half-row gap for any diameter: the centre is always half a row above
-    // the calendar top, minus half the circle's own height.
+    // the calendar top, minus half the circle's own height - and, when the
+    // holiday block reserves rows above the calendar, further up by exactly
+    // that much.
     const diameter = rowHeight * DIAMETER_FACTOR;
-    const centerY = calendar.top - rowHeight / 2 - diameter / 2;
+    const centerY = indicatorY({
+        top: calendar.top,
+        rowHeight,
+        diameter,
+        reservedRows: entry.holidays?.reservedRows,
+    });
 
     try {
         const circle = await run(() => board.createShape({
@@ -134,6 +147,7 @@ async function createIndicator(calendar, x) {
                 circleId: circle.id,
                 anchorId: anchor.id,
                 connectorId: connector.id,
+                placedY: centerY,
             },
         });
 
@@ -177,13 +191,27 @@ async function createIndicator(calendar, x) {
 }
 
 /**
- * Only x is ever written, never y. Drag the lower anchor down and the line
- * stays longer; push the circle up and it stays up. That is the whole length
- * and height adjustment, and it has to work this way: width and height are
- * read-only on shapes, so a rectangle used as a line could not be stretched at
- * all without deleting and recreating it.
+ * x always follows today; y only follows the holiday block.
+ *
+ * Writing x on every difference is right - the marker is supposed to track the
+ * date. y is not: the user is meant to be able to drag the circle higher and
+ * have it stay, which is why this function wrote x alone for as long as the
+ * circle had a fixed height above the calendar.
+ *
+ * Now that the holiday block can push it up, y has to move sometimes. The
+ * guard is `placedY` - the y *we* last wrote - rather than the circle's actual
+ * position. Comparing against the actual position would undo a hand-drag on
+ * the very next tick; comparing against our own intent means a tick that wants
+ * the same y as last time does not touch y at all, and only a changed holiday
+ * block moves the circle. That is the moment the user expects it to jump.
+ *
+ * The lower anchor keeps its own y throughout: dragging it down is how the
+ * line is made longer, and nothing here may take that back.
  */
-async function moveIndicator(entry, x) {
+async function moveIndicator(entry, x, y) {
+    const moveY = entry.indicator.placedY == null
+        || Math.abs(y - entry.indicator.placedY) >= NUDGE;
+
     const ids = [entry.indicator.circleId, entry.indicator.anchorId];
 
     for (const id of ids) {
@@ -224,10 +252,21 @@ async function moveIndicator(entry, x) {
             return;
         }
 
-        if (Math.abs(item.x - x) < NUDGE) continue;
+        const isCircle = id === entry.indicator.circleId;
+        const wantsX = Math.abs(item.x - x) >= NUDGE;
+        const wantsY = isCircle && moveY;
 
-        item.x = x;
+        if (!wantsX && !wantsY) continue;
+
+        if (wantsX) item.x = x;
+        if (wantsY) item.y = y;
         await run(() => item.sync());
+    }
+
+    if (moveY) {
+        await updateCalendar(entry.calendarId, {
+            indicator: { ...entry.indicator, placedY: y },
+        });
     }
 }
 
@@ -276,6 +315,12 @@ async function removeIndicator(entry) {
     }
 
     await updateCalendar(entry.calendarId, {
-        indicator: { ...entry.indicator, circleId: null, anchorId: null, connectorId: null },
+        indicator: {
+            ...entry.indicator,
+            circleId: null,
+            anchorId: null,
+            connectorId: null,
+            placedY: null,
+        },
     });
 }

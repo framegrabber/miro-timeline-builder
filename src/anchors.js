@@ -42,7 +42,7 @@ export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = tr
             lastDay: shapes.lastDay.id,
             topLeft: shapes.topLeft.id,
         },
-        indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null },
+        indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null, placedY: null },
         vacationItemIds: [],
     });
     await writeCalendars(calendars);
