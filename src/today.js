@@ -1,7 +1,7 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars } from './anchors.js';
-import { columnForToday, indicatorY } from './todayColumn.js';
+import { columnForToday, indicatorY, shouldMoveIndicatorY } from './todayColumn.js';
 
 const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
@@ -45,11 +45,24 @@ export async function syncIndicator(calendar, today) {
     }
 
     const x = xOfColumn(grid, column) + grid.shapeWidth / 2;
+    const diameter = calendar.rowHeight * DIAMETER_FACTOR;
     const y = indicatorY({
         top: calendar.top,
         rowHeight: calendar.rowHeight,
-        diameter: calendar.rowHeight * DIAMETER_FACTOR,
+        diameter,
         reservedRows: entry.holidays?.reservedRows,
+    });
+
+    // What createIndicator would have written before placedY (and reservedRows)
+    // existed. A legacy indicator - one with no placedY on record - has no other
+    // way to know what its own y was last set to; this reconstructs it instead
+    // of guessing, so moveIndicator can tell whether the holiday block actually
+    // changed anything.
+    const legacyY = indicatorY({
+        top: calendar.top,
+        rowHeight: calendar.rowHeight,
+        diameter,
+        reservedRows: 0,
     });
 
     if (!entry.indicator.circleId) {
@@ -57,7 +70,7 @@ export async function syncIndicator(calendar, today) {
         return;
     }
 
-    await moveIndicator(entry, x, y);
+    await moveIndicator(entry, x, y, legacyY);
 }
 
 /**
@@ -208,9 +221,10 @@ async function createIndicator(calendar, x) {
  * The lower anchor keeps its own y throughout: dragging it down is how the
  * line is made longer, and nothing here may take that back.
  */
-async function moveIndicator(entry, x, y) {
-    const moveY = entry.indicator.placedY == null
-        || Math.abs(y - entry.indicator.placedY) >= NUDGE;
+async function moveIndicator(entry, x, y, legacyY) {
+    // See shouldMoveIndicatorY in todayColumn.js for why a legacy indicator
+    // (no placedY on record) falls back to legacyY instead of just writing y.
+    const moveY = shouldMoveIndicatorY(y, entry.indicator.placedY, legacyY, NUDGE);
 
     const ids = [entry.indicator.circleId, entry.indicator.anchorId];
 

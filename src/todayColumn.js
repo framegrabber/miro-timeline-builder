@@ -29,3 +29,20 @@ export function columnForToday(year, today) {
 export function indicatorY({ top, rowHeight, diameter, reservedRows }) {
     return top - (reservedRows ?? 0) * rowHeight - rowHeight / 2 - diameter / 2;
 }
+
+/**
+ * Whether moveIndicator should write the circle's y.
+ *
+ * `placedY` is the y *we* last wrote - absent (never recorded) or explicitly
+ * null (cleared by removeIndicator) for any indicator predating that field.
+ * For those, `legacyY` stands in: createIndicator was the only writer of the
+ * circle's y before reservedRows existed, and it always used the no-holidays
+ * formula, so that value IS what was last written, not a guess. Falling back
+ * to it - rather than to "write it anyway" - is what lets a hand-drag from
+ * before this change survive the first tick, while still letting a holiday
+ * block that appeared since push the circle up.
+ */
+export function shouldMoveIndicatorY(y, placedY, legacyY, nudge) {
+    const lastWritten = placedY ?? legacyY;
+    return Math.abs(y - lastWritten) >= nudge;
+}

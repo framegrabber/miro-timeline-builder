@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
-import { columnForToday, indicatorY } from '../src/todayColumn.js';
+import { columnForToday, indicatorY, shouldMoveIndicatorY } from '../src/todayColumn.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -140,4 +140,55 @@ test('a missing reservedRows counts as none', () => {
         indicatorY({ top: 0, rowHeight: 100, diameter: 160, reservedRows: undefined }),
         indicatorY({ top: 0, rowHeight: 100, diameter: 160, reservedRows: 0 })
     );
+});
+
+// --- reconstructing placedY for indicators from before it existed ----------
+
+test('the reconstructed placedY is what the pre-holiday code wrote', () => {
+    // createIndicator used top - rowHeight/2 - diameter/2 before reservedRows
+    // existed. An indicator from that era has no placedY, and this is the
+    // value that must stand in for it - otherwise the first tick after the
+    // upgrade overwrites the user's hand-positioned circle.
+    const legacy = indicatorY({ top: 1000, rowHeight: 100, diameter: 160, reservedRows: 0 });
+
+    assert.equal(legacy, 1000 - 50 - 80);
+});
+
+test('a legacy indicator does not move while there are no holidays', () => {
+    const geometry = { top: 1000, rowHeight: 100, diameter: 160 };
+    const wanted = indicatorY({ ...geometry, reservedRows: undefined });
+    const legacy = indicatorY({ ...geometry, reservedRows: 0 });
+
+    assert.equal(wanted, legacy, 'no difference means moveIndicator leaves y alone');
+});
+
+test('a legacy indicator does move once a holiday block exists', () => {
+    const geometry = { top: 1000, rowHeight: 100, diameter: 160 };
+    const wanted = indicatorY({ ...geometry, reservedRows: 5.54 });
+    const legacy = indicatorY({ ...geometry, reservedRows: 0 });
+
+    assert.notEqual(wanted, legacy);
+    assert.ok(wanted < legacy, 'the circle rises above the block');
+});
+
+// --- shouldMoveIndicatorY: the extracted moveIndicator decision -------------
+
+test('shouldMoveIndicatorY falls back to legacyY when placedY is absent', () => {
+    // No holidays: wanted y equals legacyY, so nothing should move.
+    assert.equal(shouldMoveIndicatorY(1000, undefined, 1000, 0.5), false);
+    // Holidays present: wanted y differs from legacyY, so it should move.
+    assert.equal(shouldMoveIndicatorY(900, undefined, 1000, 0.5), true);
+});
+
+test('shouldMoveIndicatorY falls back to legacyY when placedY was cleared to null', () => {
+    // removeIndicator sets placedY to null, not undefined - `??` must catch both.
+    assert.equal(shouldMoveIndicatorY(1000, null, 1000, 0.5), false);
+    assert.equal(shouldMoveIndicatorY(900, null, 1000, 0.5), true);
+});
+
+test('shouldMoveIndicatorY compares against placedY, not the reconstruction, once it is recorded', () => {
+    // A real placedY of 900 means the last write already accounted for holidays.
+    // legacyY (the pre-holiday value) must be ignored once placedY exists.
+    assert.equal(shouldMoveIndicatorY(900, 900, 1000, 0.5), false);
+    assert.equal(shouldMoveIndicatorY(850, 900, 1000, 0.5), true);
 });
