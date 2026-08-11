@@ -3,10 +3,12 @@
 **Datum:** 2026-08-11
 **Gehört zu:** [TODAY-Indikator: Länge, Stapelposition, Tick-Kosten](../specs/2026-08-11-today-indikator-laenge-stapel-tick-design.md)
 
-**Status (2026-08-11):** Alle drei Annahmen unten sind unbestätigt. Die Prüfung
-braucht ein echtes, offenes Board und kann von keinem Agenten ausgeführt
-werden. Wer die Checkliste im Abschnitt „Prüfung am Board" durcharbeitet, trägt
-die Ergebnisse in die Tabelle „Ergebnisse" am Ende dieser Notiz ein.
+**Status (2026-08-11): bestätigt.** Die Checkliste unten wurde auf einem echten
+Board durchgearbeitet, alle sieben Schritte verhielten sich wie erwartet, und
+keine der Fallback-Warnungen erschien in der Konsole. Damit gelten alle drei
+Annahmen; die Fallback-Pfade im Code bleiben trotzdem stehen — sie kosten
+nichts, solange sie nicht auslösen, und ein SDK-Update kann die Antwort wieder
+ändern.
 
 Drei Verhalten des Web SDK, die die Referenz nicht beantwortet. Der Code
 beantwortet sie zur Laufzeit und fällt zurück; diese Notiz hält fest, woran man
@@ -100,9 +102,14 @@ Timeline Builder - indicator pass ${dateKey}: ${stats.calls} calls, ${stats.cred
 
 | Annahme | Ergebnis | Datum | Eingetragen von |
 |---|---|---|---|
-| `bringToFront` nimmt einen Connector | _offen_ | | |
-| `bringToFront` wirkt an einem gruppierten Element | _offen_ | | |
-| Endpunkte heißen `connector.start.item` / `connector.end.item` | _offen_ | | |
+| `bringToFront` nimmt einen Connector | bestätigt — keine „falling back"-Warnung | 2026-08-11 | Felix Rothballer |
+| `bringToFront` wirkt an einem gruppierten Element | bestätigt — Linie liegt nach dem Import über Balken und Bändern | 2026-08-11 | Felix Rothballer |
+| Endpunkte heißen `connector.start.item` / `connector.end.item` | bestätigt — abgerissener Konnektor wurde neu gezeichnet, die „cannot read"-Zeile blieb aus | 2026-08-11 | Felix Rothballer |
+
+Damit ist auch belegt, was die Unit-Tests nicht abdecken konnten: Schritt 1 (kein
+bestehendes Board verschiebt sich), Schritt 2 (der Tageswächter greift),
+Schritt 3 und 4 (Länge folgt dem Inhalt, ein gezogener Anker überlebt bis zum
+nächsten Import) und Schritt 6 (der Reparaturpfad aus #7 läuft wirklich).
 
 **Quellen:**
 [Board](https://developers.miro.com/docs/websdk-reference-board),
