@@ -34,7 +34,7 @@ const NUDGE = 0.5;
  * not fixed - see the design doc's accepted costs - because closing it would
  * need a compare-and-swap that AppData does not offer.
  */
-export async function syncIndicator(calendar, today) {
+export async function syncIndicator(calendar, today, { raise = false } = {}) {
     const { entry, grid } = calendar;
     const column = columnForToday(calendar.year, today);
     const wanted = entry.indicator.enabled && column !== null;
@@ -79,7 +79,8 @@ export async function syncIndicator(calendar, today) {
     const legacyAnchor = legacyAnchorY({ bottom: calendar.bottom, rowHeight: calendar.rowHeight });
 
     if (!entry.indicator.circleId) {
-        await createIndicator(calendar, x, anchorTarget);
+        const created = await createIndicator(calendar, x, anchorTarget);
+        if (raise) await raiseIndicator(entry, created);
         return;
     }
 
@@ -93,7 +94,11 @@ export async function syncIndicator(calendar, today) {
 
     // Only worth a read when something actually moved: a pass that wrote
     // nothing cannot have revealed a detached line that the last pass missed.
-    if (wrote) await verifyConnector(entry);
+    const connectorId = wrote ? await verifyConnector(entry) : entry.indicator.connectorId;
+
+    if (raise) {
+        await raiseIndicator(entry, { ...entry.indicator, connectorId: connectorId ?? entry.indicator.connectorId });
+    }
 }
 
 /**
@@ -420,6 +425,52 @@ async function reconnect(entry, staleConnector) {
 }
 
 /**
+ * Puts the indicator back on top of whatever was drawn after it.
+ *
+ * Never throws. This runs at the end of an import that has already succeeded;
+ * a decoration failing to raise itself must not turn that into an error the
+ * user sees.
+ *
+ * Two things here are not in the SDK reference: whether a Connector counts as a
+ * BaseItem for bringToFront (it is explicitly excluded for frames), and whether
+ * bringToFront works on an item that sits inside a group - ours do. Rather than
+ * measure both first, the code answers them at runtime: try the pair, and on
+ * any rejection raise the circle alone and redraw the line, which lands it on
+ * top by creation order. See docs/superpowers/notes/ for what to watch on a
+ * real board.
+ */
+async function raiseIndicator(entry, indicator) {
+    const { circleId, connectorId } = indicator;
+    if (!circleId) return;
+
+    try {
+        const items = await Promise.all(
+            [circleId, connectorId]
+                .filter(Boolean)
+                .map((id) => run(() => board.getById(id)))
+        );
+        await run(() => board.bringToFront(items));
+        return;
+    } catch (error) {
+        console.warn(`Timeline Builder: could not raise the TODAY indicator for calendar ${entry.calendarId} in one call, falling back`, error);
+    }
+
+    try {
+        const circle = await run(() => board.getById(circleId));
+        await run(() => board.bringToFront(circle));
+    } catch (error) {
+        console.warn(`Timeline Builder: could not raise the TODAY circle for calendar ${entry.calendarId}`, error);
+    }
+
+    try {
+        const stale = connectorId ? await run(() => board.getById(connectorId)) : null;
+        await reconnect({ ...entry, indicator }, stale);
+    } catch (error) {
+        console.warn(`Timeline Builder: could not redraw the TODAY connector for calendar ${entry.calendarId}`, error);
+    }
+}
+
+/**
  * Brings every calendar's indicator up to date in one pass.
  *
  * Never throws. This runs in every board viewer's session (the headless
@@ -428,7 +479,7 @@ async function reconnect(entry, staleConnector) {
  * must not take somebody's board down with it, nor cost the calendar that was
  * just drawn.
  */
-export async function updateIndicators(today) {
+export async function updateIndicators(today, { raise = false } = {}) {
     let calendars;
     try {
         calendars = await findCalendars();
@@ -440,7 +491,7 @@ export async function updateIndicators(today) {
 
     for (const calendar of calendars) {
         try {
-            await syncIndicator(calendar, today);
+            await syncIndicator(calendar, today, { raise });
         } catch (error) {
             // Isolated per calendar: if this one fails deterministically (a style
             // value Miro rejects, say), it must not starve every other calendar on

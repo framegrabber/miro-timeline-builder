@@ -185,7 +185,7 @@ async function runHolidays() {
         // The circle sits above this block, so it has to move now rather than
         // at the next tick - same reason drawCalendar kicks it.
         try {
-            await updateIndicators(dayjs());
+            await updateIndicators(dayjs(), { raise: true });
         } catch (error) {
             console.error('Could not update the TODAY indicator:', error);
         }
