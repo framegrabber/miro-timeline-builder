@@ -322,9 +322,16 @@ eine am Fensterrand mit `clipped: true`; eine ganz außerhalb mit
 **`columnForToday`** in `test/today.test.js` — heute innerhalb, heute vor dem
 Fenster, heute nach dem Fenster.
 
-**Regression:** die vorhandenen 146 Tests bleiben unverändert grün. Ein Kalender
-über das ganze Jahr muss bitgleiche Blöcke und bitgleiche Koordinaten ergeben —
-das ist die eigentliche Abnahme dieses Specs.
+**Regression:** die Erwartungswerte der vorhandenen 146 Tests bleiben
+unverändert. Ihre Aufrufe nicht: `placeSpan`, `planVacations`, `planStickies`,
+`planBands` und `columnForToday` nehmen künftig einen Bereich, also bekommen die
+betroffenen Aufrufe ihr Jahr in `fullYearRange(…)` gewickelt — mechanisch, ohne
+eine einzige geänderte Zusicherung. Eine Signatur, die eine Jahreszahl *oder*
+einen Bereich akzeptiert, wäre ein zweiter Modus in fünf Funktionen und wurde
+verworfen.
+
+Ein Kalender über das ganze Jahr muss bitgleiche Blöcke und bitgleiche
+Koordinaten ergeben — das ist die eigentliche Abnahme dieses Specs.
 
 **Nicht testbar und darum manuell:** dass ein Teilkalender auf dem Board
 tatsächlich dort landet, wo der Nutzer hinsieht (der verschobene Ursprung), und
