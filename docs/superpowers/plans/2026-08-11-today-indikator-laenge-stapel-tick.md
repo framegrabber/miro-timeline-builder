@@ -1216,3 +1216,34 @@ git commit -m "records what the board actually does with bringToFront and the co
 **Was dieser Plan bewusst nicht testet.** Board-I/O in `today.js`, `import.js`, `index.js`. Dieselbe Grenze wie in den beiden Vorgängerplänen, und der Grund für die Ausführlichkeit von Task 9. Die riskanteste ungetestete Stelle ist `verifyConnector`: liest es die Endpunkte falsch, würde es einen gesunden Konnektor bei jedem Pass neu zeichnen — deshalb die Abschaltung bei unerwarteter Form statt eines blinden Neuzeichnens.
 
 **Was #4 offen lässt.** Dieser Plan senkt die Dauerlast und macht sie sichtbar. Er beantwortet nicht, ob der Indikator dem Board beim Pannen und Zoomen Leistung kostet; dazu braucht es ein Profil mit und ohne Indikator und einen Test mit mehreren offenen Sitzungen. Das bleibt am Issue.
+
+---
+
+## Nachtrag: Was das Abschlussreview geändert hat (2026-08-11)
+
+Der gebaute Code ist an vier Stellen bewusst **nicht** das, was dieser Plan
+vorgeschrieben hat. Grund: Die vorgeschriebene Form ließ ein unvollständiges
+`indicator`-Objekt in einen AppData-Write laufen, was den Indikator im nächsten
+Pass komplett gelöscht hätte. Entscheidung des Repository-Eigners: der Code
+regiert, der Plan wird nachgezogen.
+
+1. **Task 5 und Task 6 schrieben `indicator: { ...entry.indicator, connectorId }`
+   bzw. übergaben `raiseIndicator` ein Objekt aus drei Ids.** Stattdessen geht
+   jeder `indicator`-Write über `recordIndicator`, das den gespeicherten Eintrag
+   frisch liest und hineinmischt — dieselbe Form wie `recordHolidays` in
+   `holidayDraw.js`. Kostet ein zusätzliches `getAppData` pro Write.
+2. **`raiseIndicator(entry, indicator)` heißt jetzt `raiseIndicator(entry)`** und
+   nimmt die Ids vom Eintrag. `createIndicator` gibt die Ids nicht mehr zurück,
+   sondern hinterlässt sie über `recordIndicator` am Eintrag.
+3. **`moveIndicator` gibt `{ wrote, alive }` zurück statt `wrote`.**
+   Konnektorprüfung und Heben laufen nur, solange die Ids noch etwas bedeuten —
+   nicht nach `removeIndicator` und nicht nach einem Rate Limit.
+4. **Der Endpunkt-Wächter aus Task 5 (`!start && !end`) wurde zu
+   `connectorState` in `indicatorGeometry.js`** mit den Zuständen `gone`,
+   `unreadable`, `attached`, `detached`. Ein fehlender Endpunkt reicht für
+   `unreadable`; `item` wird als Id-String und als Objekt mit `id` gelesen. Als
+   reine Funktion ist der Wächter jetzt getestet — die in der Selbstprüfung
+   genannte „riskanteste ungetestete Stelle" ist damit teilweise abgedeckt.
+
+Außerdem korrigiert: ein falscher Kommentar in `test/today.test.js` über die
+Herkunft von `contentBottom`. Werte und Zusicherungen unverändert.

@@ -386,3 +386,35 @@ bewegt.
 - [Web SDK: Connector](https://developers.miro.com/docs/websdk-reference-connector)
   — „it's not possible to create loose (both ends disconnected) or dangling (one
   end disconnected) connectors."
+
+## Nachtrag: Abweichungen nach dem Review (2026-08-11)
+
+Das Abschlussreview des Branches hat gezeigt, dass die hier vorgeschriebene Form
+einen Fehler enthält: Der Konnektor-Neuaufbau schrieb `indicator` als
+`{ ...entry.indicator, connectorId }`, und der Fallback von `raiseIndicator`
+bekam nur die drei Ids übergeben. Damit landete ein unvollständiges
+`indicator`-Objekt in AppData — `enabled`, `placedY` und `placedAnchorY` waren
+weg, der nächste Pass las `enabled: undefined`, hielt den Indikator für nicht
+gewünscht und löschte Kreis, Anker und Linie. Also genau auf dem Pfad, der
+Robustheit herstellen sollte. Der Code weicht deshalb bewusst ab:
+
+- **Alle `indicator`-Schreibvorgänge in `today.js` gehen durch `recordIndicator`.**
+  Es liest den gespeicherten Eintrag frisch und mischt die Änderung hinein,
+  genau wie `recordHolidays` in `holidayDraw.js`. Ein Teilobjekt kann keinen
+  AppData-Write mehr erreichen. Kosten: ein zusätzliches `getAppData` pro
+  Indikator-Write — also nur an Tagen, an denen sich etwas bewegt.
+- **`raiseIndicator(entry)` nimmt kein Indikator-Objekt mehr.** Die Ids kommen
+  vom Eintrag, den `recordIndicator` nach jedem Write aktuell hält. Damit kann
+  auch kein veralteter In-Memory-Stand einen frischen Write zurückdrehen.
+- **`moveIndicator` gibt `{ wrote, alive }` zurück statt eines Booleans.**
+  „Geschrieben" und „existiert noch" sind nicht dasselbe: Der Anker kann
+  geschrieben sein und der Kreis danach als gelöscht auffallen. Konnektorprüfung
+  und Heben laufen nur, solange `alive` gilt — nach einem Rate Limit ebenfalls
+  nicht, weil der wahre Zustand dann unbekannt ist.
+- **Der Endpunkt-Wächter greift bei *einem* fehlenden Endpunkt.** Der Spec
+  beschrieb ihn als „`start.item` / `end.item` zeigen nicht mehr auf Kreis und
+  Anker"; implementiert war „nur wenn beide fehlen". `connectorState` in
+  `indicatorGeometry.js` unterscheidet jetzt `gone`, `unreadable`, `attached`
+  und `detached`, liest `item` sowohl als Id-String als auch als Objekt mit
+  `id`, und behält für `unreadable` das Verhalten „warnen, nichts ändern".
+  Weil die Funktion rein ist, ist sie in `test/today.test.js` abgedeckt.
