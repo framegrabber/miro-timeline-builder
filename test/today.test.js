@@ -12,6 +12,8 @@ import {
     anchorY,
     legacyAnchorY,
     MIN_ANCHOR_ROWS,
+    connectorState,
+    endpointItemId,
 } from '../src/indicatorGeometry.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
@@ -232,7 +234,10 @@ test('content past the floor wins and clears the last row by one row height', ()
     const padding = 2;
     const contentRows = 6;
 
-    // The lowest bar's bottom edge, derived the way import.js draws it.
+    // One padding past the lowest bar's bottom edge: anchorY counts padding
+    // contentRows + 1 times, while drawRows (src/import.js) puts the last bar's
+    // bottom edge one padding higher. The gap is intended - the line is meant
+    // to end visibly past the content, not flush with it.
     const contentBottom = bottom + padding + contentRows * (rowHeight + padding);
 
     assert.equal(
@@ -336,4 +341,60 @@ test('a new date lets the pass through', () => {
 test('the first pass after the board opened always runs', () => {
     assert.equal(shouldPass('2026-08-11', null), true);
     assert.equal(shouldPass('2026-08-11', undefined), true);
+});
+
+// --- the connector's endpoints ------------------------------------------------
+
+test('a connector on the circle and the anchor reads as attached', () => {
+    const connector = { start: { item: 'circle-1' }, end: { item: 'anchor-1' } };
+    assert.equal(connectorState(connector, 'circle-1', 'anchor-1'), 'attached');
+});
+
+test('an endpoint handed back as a resolved item still reads as attached', () => {
+    // The SDK reference does not pin the endpoint's shape down; an object with
+    // an id must not be mistaken for a detached line, or every writing pass
+    // would redraw a perfectly healthy connector.
+    const connector = { start: { item: { id: 'circle-1' } }, end: { item: { id: 'anchor-1' } } };
+    assert.equal(connectorState(connector, 'circle-1', 'anchor-1'), 'attached');
+});
+
+test('endpoints pointing elsewhere read as detached', () => {
+    assert.equal(
+        connectorState({ start: { item: 'circle-1' }, end: { item: 'someone-else' } }, 'circle-1', 'anchor-1'),
+        'detached'
+    );
+    assert.equal(
+        connectorState({ start: { item: 'someone-else' }, end: { item: 'anchor-1' } }, 'circle-1', 'anchor-1'),
+        'detached'
+    );
+});
+
+test('one missing endpoint is enough to be unreadable, not detached', () => {
+    // The regression this pins: while the check required BOTH ends to be
+    // absent, a connector with one readable end was called detached and
+    // redrawn, and a hand-detached one with neither end readable was accepted.
+    assert.equal(connectorState({ start: { item: 'circle-1' } }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(connectorState({ end: { item: 'anchor-1' } }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(connectorState({}, 'circle-1', 'anchor-1'), 'unreadable');
+});
+
+test('an endpoint in no known shape is unreadable', () => {
+    assert.equal(connectorState({ start: {}, end: {} }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(
+        connectorState({ start: { item: {} }, end: { item: { id: 'anchor-1' } } }, 'circle-1', 'anchor-1'),
+        'unreadable'
+    );
+});
+
+test('no connector at all is gone, which is the one case worth redrawing blind', () => {
+    assert.equal(connectorState(null, 'circle-1', 'anchor-1'), 'gone');
+    assert.equal(connectorState(undefined, 'circle-1', 'anchor-1'), 'gone');
+});
+
+test('endpointItemId reads both shapes and refuses to guess at anything else', () => {
+    assert.equal(endpointItemId({ item: 'circle-1' }), 'circle-1');
+    assert.equal(endpointItemId({ item: { id: 'circle-1' } }), 'circle-1');
+    assert.equal(endpointItemId({ item: null }), null);
+    assert.equal(endpointItemId({}), null);
+    assert.equal(endpointItemId(undefined), null);
 });

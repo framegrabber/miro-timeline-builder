@@ -101,3 +101,47 @@ export function legacyAnchorY({ bottom, rowHeight }) {
 export function shouldPass(dateKey, lastDateKey) {
     return dateKey !== lastDateKey;
 }
+
+/**
+ * The item id a connector endpoint points at, or null when it cannot be read.
+ *
+ * The Web SDK reference does not spell out the shape of `start`/`end`, and the
+ * two plausible shapes have to be told apart from a genuinely broken endpoint:
+ * `{ item: 'id' }` is what the code has always assumed, `{ item: { id } }` is
+ * what an SDK that hands back the resolved item would look like. Reading both
+ * costs one line; guessing wrong the other way would mean an endpoint that
+ * never matches, so a healthy connector would be redrawn on every writing pass.
+ */
+export function endpointItemId(endpoint) {
+    const item = endpoint?.item;
+    if (item === null || item === undefined) return null;
+    if (typeof item === 'string') return item;
+    return item.id ?? null;
+}
+
+/**
+ * What a fetched connector says about itself: 'gone', 'unreadable', 'attached'
+ * or 'detached'.
+ *
+ * 'unreadable' and 'detached' are deliberately different answers. Unreadable
+ * means this code cannot see where the line ends - an endpoint object that is
+ * missing or whose item is in neither known shape - and the only safe response
+ * is to warn and change nothing. Detached means the endpoints were read fine
+ * and point somewhere other than our circle and anchor, which is the failure
+ * from issue #7 and the one case that earns a repair.
+ *
+ * Note that a missing `start` or `end` alone is enough to be unreadable:
+ * requiring both to be absent - as this check first did - meant a connector
+ * that presented with one readable end was classified as detached and redrawn,
+ * while a hand-detached one with neither end readable was silently accepted.
+ */
+export function connectorState(connector, circleId, anchorId) {
+    if (!connector) return 'gone';
+    if (!connector.start || !connector.end) return 'unreadable';
+
+    const startId = endpointItemId(connector.start);
+    const endId = endpointItemId(connector.end);
+    if (startId === null || endId === null) return 'unreadable';
+
+    return startId === circleId && endId === anchorId ? 'attached' : 'detached';
+}

@@ -1,7 +1,14 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
-import { updateCalendar, findCalendars } from './anchors.js';
-import { columnForToday, indicatorY, shouldMoveIndicatorY, anchorY, legacyAnchorY } from './indicatorGeometry.js';
+import { updateCalendar, findCalendars, readCalendars } from './anchors.js';
+import {
+    columnForToday,
+    indicatorY,
+    shouldMoveIndicatorY,
+    anchorY,
+    legacyAnchorY,
+    connectorState,
+} from './indicatorGeometry.js';
 
 const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
@@ -20,6 +27,42 @@ const DIAMETER_FACTOR = 1.6;
 // Anything closer than this is the same position as far as anyone can see, and
 // writing it again would only burn credits.
 const NUDGE = 0.5;
+
+/**
+ * Merges into the stored indicator bookkeeping instead of replacing it.
+ *
+ * updateCalendar merges at the top level only, so handing it an `indicator`
+ * object replaces the whole thing - and every writer here knows only some of
+ * its fields. A repair path that spread the ids it was given would drop
+ * `enabled`, `placedY` and `placedAnchorY`, and the very next pass would then
+ * read `enabled: undefined`, decide the indicator is not wanted, and delete the
+ * circle, anchor and line the repair had just fixed. Reading the entry back
+ * first and merging on top of it is the same precaution recordHolidays takes in
+ * holidayDraw.js, and it means a partial object can never reach an AppData
+ * write.
+ *
+ * The freshly read value wins over the in-memory `entry.indicator`, which may
+ * be several writes old by the time a pass gets here (moveIndicator writes
+ * placedY/placedAnchorY, the repair path writes connectorId). `entry.indicator`
+ * only fills in keys the stored object does not have at all. The merged result
+ * is written back onto the entry so the rest of this pass reads what is
+ * actually on record.
+ */
+async function recordIndicator(entry, changes) {
+    const stored = await storedIndicator(entry.calendarId);
+    const indicator = { ...entry.indicator, ...stored, ...changes };
+
+    await updateCalendar(entry.calendarId, { indicator });
+    entry.indicator = indicator;
+
+    return indicator;
+}
+
+/** The indicator bookkeeping as AppData has it right now, not as this pass remembers it. */
+async function storedIndicator(calendarId) {
+    const entries = await readCalendars();
+    return entries.find((entry) => entry.calendarId === calendarId)?.indicator ?? {};
+}
 
 /**
  * Brings the indicator of one calendar in line with today.
@@ -79,12 +122,12 @@ export async function syncIndicator(calendar, today, { raise = false } = {}) {
     const legacyAnchor = legacyAnchorY({ bottom: calendar.bottom, rowHeight: calendar.rowHeight });
 
     if (!entry.indicator.circleId) {
-        const created = await createIndicator(calendar, x, anchorTarget);
-        if (raise) await raiseIndicator(entry, created);
+        await createIndicator(calendar, x, anchorTarget);
+        if (raise) await raiseIndicator(entry);
         return;
     }
 
-    const wrote = await moveIndicator(entry, {
+    const { wrote, alive } = await moveIndicator(entry, {
         x,
         circleY: y,
         legacyCircleY: legacyY,
@@ -92,13 +135,19 @@ export async function syncIndicator(calendar, today, { raise = false } = {}) {
         legacyAnchor,
     });
 
+    // Everything below this line touches the three ids, so it may only run
+    // while they still mean something. moveIndicator reports them dead when it
+    // gave up on the indicator (removeIndicator cleared them) and when a rate
+    // limit left their real state unknown: verifying a connector between
+    // deleted items throws, and repairing one would write the abandoned ids
+    // back into AppData and resurrect what was just given up on.
+    if (!alive) return;
+
     // Only worth a read when something actually moved: a pass that wrote
     // nothing cannot have revealed a detached line that the last pass missed.
-    const connectorId = wrote ? await verifyConnector(entry) : entry.indicator.connectorId;
+    if (wrote) await verifyConnector(entry);
 
-    if (raise) {
-        await raiseIndicator(entry, { ...entry.indicator, connectorId: connectorId ?? entry.indicator.connectorId });
-    }
+    if (raise) await raiseIndicator(entry);
 }
 
 /**
@@ -139,6 +188,11 @@ function createDottedConnector(circleId, anchorId) {
  * attempt created, before the error propagates, keeps a failed attempt from
  * ever being distinguishable - on the board or in AppData - from an attempt
  * that never started.
+ *
+ * The write goes through recordIndicator, so the three ids also land on the
+ * in-memory entry: the caller's raise step reads them from there instead of
+ * being handed a three-field object that could be mistaken for a whole
+ * indicator.
  */
 async function createIndicator(calendar, x, anchorTarget) {
     const { entry, rowHeight } = calendar;
@@ -194,15 +248,12 @@ async function createIndicator(calendar, x, anchorTarget) {
         connector = await createDottedConnector(circle.id, anchor.id);
         created.push(connector);
 
-        await updateCalendar(entry.calendarId, {
-            indicator: {
-                ...entry.indicator,
-                circleId: circle.id,
-                anchorId: anchor.id,
-                connectorId: connector.id,
-                placedY: centerY,
-                placedAnchorY: anchorTarget,
-            },
+        await recordIndicator(entry, {
+            circleId: circle.id,
+            anchorId: anchor.id,
+            connectorId: connector.id,
+            placedY: centerY,
+            placedAnchorY: anchorTarget,
         });
 
         // Grouping happens last, and is guarded on its own, on purpose. It runs
@@ -242,8 +293,6 @@ async function createIndicator(calendar, x, anchorTarget) {
         console.error(`Timeline Builder: failed to create the TODAY indicator for calendar ${entry.calendarId}, rolled back`, error);
         throw error;
     }
-
-    return { circleId: circle.id, anchorId: anchor.id, connectorId: connector.id };
 }
 
 /**
@@ -272,8 +321,14 @@ async function createIndicator(calendar, x, anchorTarget) {
  * long and the circle on yesterday, which reads as "it has not updated yet"
  * and heals on the next pass just the same.
  *
- * Returns whether anything was written, so the caller knows when it is worth
- * spending a read on checking the connector.
+ * Returns `{ wrote, alive }`. `wrote` says whether anything was written, so the
+ * caller knows when it is worth spending a read on checking the connector.
+ * `alive` says whether the three ids still mean anything afterwards, which is a
+ * different question: this function can write the anchor and then discover that
+ * the circle is gone, so "something was written" must not be read as "the
+ * indicator is still there". `alive` is false both when the ids were given up
+ * (removeIndicator cleared them) and when a rate limit left their real state
+ * unknown - in both cases the rest of the pass has to keep its hands off them.
  */
 async function moveIndicator(entry, targets) {
     const moveCircleY = shouldMoveIndicatorY(targets.circleY, entry.indicator.placedY, targets.legacyCircleY, NUDGE);
@@ -307,7 +362,7 @@ async function moveIndicator(entry, targets) {
             // measure() does for the same failure.
             if (isRateLimitError(error)) {
                 console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
-                return wrote;
+                return { wrote, alive: false };
             }
 
             // Someone deleted a piece of it - but not necessarily all of it.
@@ -321,7 +376,7 @@ async function moveIndicator(entry, targets) {
             // each one being gone, which is exactly what a broken indicator
             // needs, so reuse it instead of writing a second teardown.
             await removeIndicator(entry);
-            return wrote;
+            return { wrote, alive: false };
         }
 
         const wantsX = Math.abs(item.x - targets.x) >= NUDGE;
@@ -340,13 +395,13 @@ async function moveIndicator(entry, targets) {
     // legacy fallback the guard above depends on, so a hand-positioned circle
     // would never be recognised as hand-positioned again.
     if (moveCircleY || moveAnchorY) {
-        const indicator = { ...entry.indicator };
-        if (moveCircleY) indicator.placedY = targets.circleY;
-        if (moveAnchorY) indicator.placedAnchorY = targets.anchorTarget;
-        await updateCalendar(entry.calendarId, { indicator });
+        const changes = {};
+        if (moveCircleY) changes.placedY = targets.circleY;
+        if (moveAnchorY) changes.placedAnchorY = targets.anchorTarget;
+        await recordIndicator(entry, changes);
     }
 
-    return wrote;
+    return { wrote, alive: true };
 }
 
 /**
@@ -384,24 +439,32 @@ async function verifyConnector(entry) {
     }
 
     // The endpoint shape is the one thing here the SDK reference does not spell
-    // out (see the note in docs/superpowers/notes/). If it is not what we
-    // expect, say so once and change nothing: recreating a healthy connector on
-    // every pass would be worse than never repairing a broken one.
-    if (connector && !connector.start && !connector.end) {
+    // out (see the note in docs/superpowers/notes/), so connectorState reads
+    // both plausible shapes and reports "unreadable" separately from "points
+    // somewhere else". Unreadable means say so once and change nothing:
+    // recreating a healthy connector on every pass would be worse than never
+    // repairing a broken one.
+    const state = connectorState(connector, circleId, anchorId);
+
+    if (state === 'unreadable') {
         console.warn('Timeline Builder: cannot read the TODAY connector\'s endpoints, leaving it alone.');
         return connectorId;
     }
 
-    const attached = connector
-        && connector.start?.item === circleId
-        && connector.end?.item === anchorId;
-
-    if (attached) return connectorId;
+    if (state === 'attached') return connectorId;
 
     return reconnect(entry, connector);
 }
 
-/** Replaces the dotted line and records the new id. Best effort about the old one. */
+/**
+ * Replaces the dotted line and records the new id. Best effort about the old one.
+ *
+ * The new id is merged into the stored bookkeeping (recordIndicator), never
+ * spread over an object the caller happened to have: this runs from the raise
+ * fallback as well as from the check above, and a write of only the three ids
+ * here would strip `enabled` and cost the user the whole indicator on the next
+ * pass.
+ */
 async function reconnect(entry, staleConnector) {
     if (staleConnector) {
         try {
@@ -415,9 +478,7 @@ async function reconnect(entry, staleConnector) {
 
     const connector = await createDottedConnector(entry.indicator.circleId, entry.indicator.anchorId);
 
-    await updateCalendar(entry.calendarId, {
-        indicator: { ...entry.indicator, connectorId: connector.id },
-    });
+    await recordIndicator(entry, { connectorId: connector.id });
 
     console.warn(`Timeline Builder: the TODAY connector for calendar ${entry.calendarId} was detached or gone and has been redrawn.`);
 
@@ -438,9 +499,14 @@ async function reconnect(entry, staleConnector) {
  * any rejection raise the circle alone and redraw the line, which lands it on
  * top by creation order. See docs/superpowers/notes/ for what to watch on a
  * real board.
+ *
+ * The ids come off the entry rather than from a parameter. The fallback path
+ * ends in reconnect, which writes to AppData; being handed a stand-in object
+ * is how that write once came to replace the whole stored indicator with three
+ * ids. There is only one indicator per entry, and this is it.
  */
-async function raiseIndicator(entry, indicator) {
-    const { circleId, connectorId } = indicator;
+async function raiseIndicator(entry) {
+    const { circleId, connectorId } = entry.indicator;
     if (!circleId) return;
 
     try {
@@ -464,7 +530,7 @@ async function raiseIndicator(entry, indicator) {
 
     try {
         const stale = connectorId ? await run(() => board.getById(connectorId)) : null;
-        await reconnect({ ...entry, indicator }, stale);
+        await reconnect(entry, stale);
     } catch (error) {
         console.warn(`Timeline Builder: could not redraw the TODAY connector for calendar ${entry.calendarId}`, error);
     }
@@ -514,14 +580,11 @@ async function removeIndicator(entry) {
         }
     }
 
-    await updateCalendar(entry.calendarId, {
-        indicator: {
-            ...entry.indicator,
-            circleId: null,
-            anchorId: null,
-            connectorId: null,
-            placedY: null,
-            placedAnchorY: null,
-        },
+    await recordIndicator(entry, {
+        circleId: null,
+        anchorId: null,
+        connectorId: null,
+        placedY: null,
+        placedAnchorY: null,
     });
 }
