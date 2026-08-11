@@ -84,3 +84,20 @@ export function anchorY({ bottom, rowHeight, padding, contentRows, minRows = MIN
 export function legacyAnchorY({ bottom, rowHeight }) {
     return bottom + MIN_ANCHOR_ROWS * rowHeight;
 }
+
+/**
+ * Whether the updater's periodic pass has anything to do.
+ *
+ * The indicator moves once a day, but the tick fires every ten minutes in the
+ * headless iframe of every open board session. A pass whose date key matches
+ * the last one would compute the same target as the last one did, so it can be
+ * skipped before a single board call is made - which is the whole point: an
+ * unchanged board should cost nothing.
+ *
+ * `lastDateKey` is absent on the first pass after the board opened, and that
+ * pass must always run: it is what heals an indicator somebody else damaged
+ * while nobody had the board open.
+ */
+export function shouldPass(dateKey, lastDateKey) {
+    return dateKey !== lastDateKey;
+}

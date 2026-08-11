@@ -8,6 +8,7 @@ import {
     columnForToday,
     indicatorY,
     shouldMoveIndicatorY,
+    shouldPass,
     anchorY,
     legacyAnchorY,
     MIN_ANCHOR_ROWS,
@@ -320,4 +321,19 @@ test('an anchor dragged by hand is not clawed back while the target is unchanged
     // placedAnchorY is what we wrote; the user has since dragged the anchor
     // 400px further down, which the guard never sees and must not undo.
     assert.equal(shouldMoveIndicatorY(target, target, legacyAnchorY({ bottom, rowHeight }), 0.5), false);
+});
+
+// --- the tick's day guard -----------------------------------------------------
+
+test('a pass on a date we have already covered is skipped', () => {
+    assert.equal(shouldPass('2026-08-11', '2026-08-11'), false);
+});
+
+test('a new date lets the pass through', () => {
+    assert.equal(shouldPass('2026-08-12', '2026-08-11'), true);
+});
+
+test('the first pass after the board opened always runs', () => {
+    assert.equal(shouldPass('2026-08-11', null), true);
+    assert.equal(shouldPass('2026-08-11', undefined), true);
 });
