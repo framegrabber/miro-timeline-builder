@@ -83,13 +83,39 @@ export async function syncIndicator(calendar, today) {
         return;
     }
 
-    await moveIndicator(entry, {
+    const wrote = await moveIndicator(entry, {
         x,
         circleY: y,
         legacyCircleY: legacyY,
         anchorTarget,
         legacyAnchor,
     });
+
+    // Only worth a read when something actually moved: a pass that wrote
+    // nothing cannot have revealed a detached line that the last pass missed.
+    if (wrote) await verifyConnector(entry);
+}
+
+/**
+ * The dotted line, and the only place its shape and style are defined.
+ *
+ * Both createIndicator and the repair path below create this connector, and a
+ * repaired line that looks different from a fresh one would be worse than no
+ * repair at all.
+ */
+function createDottedConnector(circleId, anchorId) {
+    return run(() => board.createConnector({
+        shape: 'straight',
+        start: { item: circleId, snapTo: 'bottom' },
+        end: { item: anchorId, snapTo: 'top' },
+        style: {
+            strokeStyle: 'dotted',
+            strokeWidth: LINE_WIDTH,
+            strokeColor: LINE_COLOR,
+            startStrokeCap: 'none',
+            endStrokeCap: 'none',
+        },
+    }));
 }
 
 /**
@@ -160,18 +186,7 @@ async function createIndicator(calendar, x, anchorTarget) {
         }));
         created.push(anchor);
 
-        connector = await run(() => board.createConnector({
-            shape: 'straight',
-            start: { item: circle.id, snapTo: 'bottom' },
-            end: { item: anchor.id, snapTo: 'top' },
-            style: {
-                strokeStyle: 'dotted',
-                strokeWidth: LINE_WIDTH,
-                strokeColor: LINE_COLOR,
-                startStrokeCap: 'none',
-                endStrokeCap: 'none',
-            },
-        }));
+        connector = await createDottedConnector(circle.id, anchor.id);
         created.push(connector);
 
         await updateCalendar(entry.calendarId, {
@@ -327,6 +342,81 @@ async function moveIndicator(entry, targets) {
     }
 
     return wrote;
+}
+
+/**
+ * Confirms the dotted line still hangs on the circle and the anchor.
+ *
+ * Miro lets a connector be detached by hand, and nothing about that shows up in
+ * the two shapes: a pass writes their x and y perfectly and the line stays
+ * where it was. That is the failure in issue #7, and the only way to notice it
+ * is to look at the connector itself.
+ *
+ * Only the connector is ever replaced. The circle and the anchor keep their ids
+ * and their positions, so a hand-drag survives and createIndicator's
+ * documented duplication race is never entered.
+ *
+ * Returns the connector id that is now on record - the old one when nothing was
+ * wrong, a new one after a repair, or null when the check could not be made and
+ * the caller should not conclude anything.
+ */
+async function verifyConnector(entry) {
+    const { connectorId, circleId, anchorId } = entry.indicator;
+    if (!connectorId) return null;
+
+    let connector;
+    try {
+        connector = await run(() => board.getById(connectorId));
+    } catch (error) {
+        if (isRateLimitError(error)) {
+            console.warn(`Timeline Builder: rate limited while checking the TODAY connector for calendar ${entry.calendarId}, skipping the check.`);
+            return null;
+        }
+        // Any other error means the connector is genuinely gone - a deleted
+        // line, or an undo that took only it. The circle and anchor are still
+        // there, so drawing a new line is all that is missing.
+        connector = null;
+    }
+
+    // The endpoint shape is the one thing here the SDK reference does not spell
+    // out (see the note in docs/superpowers/notes/). If it is not what we
+    // expect, say so once and change nothing: recreating a healthy connector on
+    // every pass would be worse than never repairing a broken one.
+    if (connector && !connector.start && !connector.end) {
+        console.warn('Timeline Builder: cannot read the TODAY connector\'s endpoints, leaving it alone.');
+        return connectorId;
+    }
+
+    const attached = connector
+        && connector.start?.item === circleId
+        && connector.end?.item === anchorId;
+
+    if (attached) return connectorId;
+
+    return reconnect(entry, connector);
+}
+
+/** Replaces the dotted line and records the new id. Best effort about the old one. */
+async function reconnect(entry, staleConnector) {
+    if (staleConnector) {
+        try {
+            await run(() => board.remove(staleConnector));
+        } catch {
+            // A line we could not remove is a visible orphan, which is ugly but
+            // harmless - and stopping here would leave the indicator with no
+            // line at all, which is the thing being repaired.
+        }
+    }
+
+    const connector = await createDottedConnector(entry.indicator.circleId, entry.indicator.anchorId);
+
+    await updateCalendar(entry.calendarId, {
+        indicator: { ...entry.indicator, connectorId: connector.id },
+    });
+
+    console.warn(`Timeline Builder: the TODAY connector for calendar ${entry.calendarId} was detached or gone and has been redrawn.`);
+
+    return connector.id;
 }
 
 /**
