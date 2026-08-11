@@ -1,7 +1,7 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars } from './anchors.js';
-import { columnForToday, indicatorY, shouldMoveIndicatorY } from './todayColumn.js';
+import { columnForToday, indicatorY, shouldMoveIndicatorY } from './indicatorGeometry.js';
 
 const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
@@ -222,7 +222,7 @@ async function createIndicator(calendar, x) {
  * line is made longer, and nothing here may take that back.
  */
 async function moveIndicator(entry, x, y, legacyY) {
-    // See shouldMoveIndicatorY in todayColumn.js for why a legacy indicator
+    // See shouldMoveIndicatorY in indicatorGeometry.js for why a legacy indicator
     // (no placedY on record) falls back to legacyY instead of just writing y.
     const moveY = shouldMoveIndicatorY(y, entry.indicator.placedY, legacyY, NUDGE);
 

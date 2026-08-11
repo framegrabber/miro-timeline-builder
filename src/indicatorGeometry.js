@@ -7,7 +7,8 @@ import { columnOf, totalWorkingDays } from './calendar.js';
  * days, so a weekend already resolves to the coming Monday - the agreed
  * behaviour needs no special case here, only the test that pins it down.
  *
- * Kept in its own file, importing nothing but calendar.js: today.js also pulls
+ * This module is the indicator's arithmetic, and nothing else. It imports
+ * nothing but calendar.js: today.js also pulls
  * in board.js, which evaluates window.miro.board at module scope. Under
  * `node --test` there is no window, so a test importing this pure function
  * through today.js would fail on import alone, before any assertion runs.
