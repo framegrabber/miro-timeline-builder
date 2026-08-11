@@ -1,7 +1,7 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars } from './anchors.js';
-import { columnForToday, indicatorY, shouldMoveIndicatorY } from './indicatorGeometry.js';
+import { columnForToday, indicatorY, shouldMoveIndicatorY, anchorY, legacyAnchorY } from './indicatorGeometry.js';
 
 const CIRCLE_FILL = '#d81b60';
 const LINE_COLOR = '#000000';
@@ -65,12 +65,31 @@ export async function syncIndicator(calendar, today) {
         reservedRows: 0,
     });
 
+    // The lower end follows the content below the calendar, and only the
+    // content: `legacyAnchor` is what createIndicator wrote before this
+    // existed, so an anchor with no placedAnchorY on record is compared
+    // against a fact instead of being written unconditionally - the same
+    // reasoning as legacyY above, for the other end of the line.
+    const anchorTarget = anchorY({
+        bottom: calendar.bottom,
+        rowHeight: calendar.rowHeight,
+        padding: grid.padding,
+        contentRows: entry.vacationRows,
+    });
+    const legacyAnchor = legacyAnchorY({ bottom: calendar.bottom, rowHeight: calendar.rowHeight });
+
     if (!entry.indicator.circleId) {
-        await createIndicator(calendar, x);
+        await createIndicator(calendar, x, anchorTarget);
         return;
     }
 
-    await moveIndicator(entry, x, y, legacyY);
+    await moveIndicator(entry, {
+        x,
+        circleY: y,
+        legacyCircleY: legacyY,
+        anchorTarget,
+        legacyAnchor,
+    });
 }
 
 /**
@@ -90,9 +109,10 @@ export async function syncIndicator(calendar, today) {
  * ever being distinguishable - on the board or in AppData - from an attempt
  * that never started.
  */
-async function createIndicator(calendar, x) {
+async function createIndicator(calendar, x, anchorTarget) {
     const { entry, rowHeight } = calendar;
     const created = [];
+    let circle, anchor, connector;
 
     // With the old fixed diameter (one rowHeight) the circle's centre sat at
     // `calendar.top - rowHeight`, which left exactly half a row of clearance
@@ -111,7 +131,7 @@ async function createIndicator(calendar, x) {
     });
 
     try {
-        const circle = await run(() => board.createShape({
+        circle = await run(() => board.createShape({
             shape: 'circle',
             content: '<p><b>TODAY</b></p>',
             x,
@@ -130,17 +150,17 @@ async function createIndicator(calendar, x) {
 
         // Miro refuses loose connectors, so the dotted line needs something to end
         // on. This is that something: present, invisible, and draggable.
-        const anchor = await run(() => board.createShape({
+        anchor = await run(() => board.createShape({
             shape: 'rectangle',
             x,
-            y: calendar.bottom + 3 * rowHeight,
+            y: anchorTarget,
             width: 8,
             height: 8,
             style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
         }));
         created.push(anchor);
 
-        const connector = await run(() => board.createConnector({
+        connector = await run(() => board.createConnector({
             shape: 'straight',
             start: { item: circle.id, snapTo: 'bottom' },
             end: { item: anchor.id, snapTo: 'top' },
@@ -161,6 +181,7 @@ async function createIndicator(calendar, x) {
                 anchorId: anchor.id,
                 connectorId: connector.id,
                 placedY: centerY,
+                placedAnchorY: anchorTarget,
             },
         });
 
@@ -201,10 +222,12 @@ async function createIndicator(calendar, x) {
         console.error(`Timeline Builder: failed to create the TODAY indicator for calendar ${entry.calendarId}, rolled back`, error);
         throw error;
     }
+
+    return { circleId: circle.id, anchorId: anchor.id, connectorId: connector.id };
 }
 
 /**
- * x always follows today; y only follows the holiday block.
+ * x always follows today; y follows the content, guarded.
  *
  * Writing x on every difference is right - the marker is supposed to track the
  * date. y is not: the user is meant to be able to drag the circle higher and
@@ -220,15 +243,30 @@ async function createIndicator(calendar, x) {
  *
  * The lower anchor keeps its own y throughout: dragging it down is how the
  * line is made longer, and nothing here may take that back.
+ *
+ * The anchor is written before the circle. Neither write is atomic and there is
+ * no transaction to put around them, so the question is only which half-done
+ * state is the better one to be left in. Circle first leaves the circle on
+ * today with the line's lower end behind - which reads as "the indicator is
+ * broken" and is exactly the report in issue #7. Anchor first leaves the line
+ * long and the circle on yesterday, which reads as "it has not updated yet"
+ * and heals on the next pass just the same.
+ *
+ * Returns whether anything was written, so the caller knows when it is worth
+ * spending a read on checking the connector.
  */
-async function moveIndicator(entry, x, y, legacyY) {
-    // See shouldMoveIndicatorY in indicatorGeometry.js for why a legacy indicator
-    // (no placedY on record) falls back to legacyY instead of just writing y.
-    const moveY = shouldMoveIndicatorY(y, entry.indicator.placedY, legacyY, NUDGE);
+async function moveIndicator(entry, targets) {
+    const moveCircleY = shouldMoveIndicatorY(targets.circleY, entry.indicator.placedY, targets.legacyCircleY, NUDGE);
+    const moveAnchorY = shouldMoveIndicatorY(targets.anchorTarget, entry.indicator.placedAnchorY, targets.legacyAnchor, NUDGE);
 
-    const ids = [entry.indicator.circleId, entry.indicator.anchorId];
+    const items = [
+        { id: entry.indicator.anchorId, y: targets.anchorTarget, wantsY: moveAnchorY },
+        { id: entry.indicator.circleId, y: targets.circleY, wantsY: moveCircleY },
+    ];
 
-    for (const id of ids) {
+    let wrote = false;
+
+    for (const { id, y, wantsY } of items) {
         let item;
         try {
             item = await run(() => board.getById(id));
@@ -249,7 +287,7 @@ async function moveIndicator(entry, x, y, legacyY) {
             // measure() does for the same failure.
             if (isRateLimitError(error)) {
                 console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
-                return;
+                return wrote;
             }
 
             // Someone deleted a piece of it - but not necessarily all of it.
@@ -263,25 +301,32 @@ async function moveIndicator(entry, x, y, legacyY) {
             // each one being gone, which is exactly what a broken indicator
             // needs, so reuse it instead of writing a second teardown.
             await removeIndicator(entry);
-            return;
+            return wrote;
         }
 
-        const isCircle = id === entry.indicator.circleId;
-        const wantsX = Math.abs(item.x - x) >= NUDGE;
-        const wantsY = isCircle && moveY;
+        const wantsX = Math.abs(item.x - targets.x) >= NUDGE;
 
         if (!wantsX && !wantsY) continue;
 
-        if (wantsX) item.x = x;
+        if (wantsX) item.x = targets.x;
         if (wantsY) item.y = y;
         await run(() => item.sync());
+        wrote = true;
     }
 
-    if (moveY) {
-        await updateCalendar(entry.calendarId, {
-            indicator: { ...entry.indicator, placedY: y },
-        });
+    // Only the field that actually moved is recorded. Writing both every time
+    // would quietly promote the *other* end's target to "we wrote this" - and
+    // for an indicator that predates these fields, that would destroy the
+    // legacy fallback the guard above depends on, so a hand-positioned circle
+    // would never be recognised as hand-positioned again.
+    if (moveCircleY || moveAnchorY) {
+        const indicator = { ...entry.indicator };
+        if (moveCircleY) indicator.placedY = targets.circleY;
+        if (moveAnchorY) indicator.placedAnchorY = targets.anchorTarget;
+        await updateCalendar(entry.calendarId, { indicator });
     }
+
+    return wrote;
 }
 
 /**
@@ -335,6 +380,7 @@ async function removeIndicator(entry) {
             anchorId: null,
             connectorId: null,
             placedY: null,
+            placedAnchorY: null,
         },
     });
 }
