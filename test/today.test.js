@@ -4,7 +4,14 @@ import assert from 'node:assert/strict';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
-import { columnForToday, indicatorY, shouldMoveIndicatorY } from '../src/indicatorGeometry.js';
+import {
+    columnForToday,
+    indicatorY,
+    shouldMoveIndicatorY,
+    anchorY,
+    legacyAnchorY,
+    MIN_ANCHOR_ROWS,
+} from '../src/indicatorGeometry.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -191,4 +198,126 @@ test('shouldMoveIndicatorY compares against placedY, not the reconstruction, onc
     // legacyY (the pre-holiday value) must be ignored once placedY exists.
     assert.equal(shouldMoveIndicatorY(900, 900, 1000, 0.5), false);
     assert.equal(shouldMoveIndicatorY(850, 900, 1000, 0.5), true);
+});
+
+// --- the anchor's height ------------------------------------------------------
+
+test('with no vacation rows the anchor sits exactly where it always did', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 }),
+        bottom + MIN_ANCHOR_ROWS * rowHeight
+    );
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 }),
+        legacyAnchorY({ bottom, rowHeight })
+    );
+});
+
+test('a missing contentRows counts as none', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const floor = legacyAnchorY({ bottom, rowHeight });
+
+    assert.equal(anchorY({ bottom, rowHeight, padding: 2 }), floor);
+    assert.equal(anchorY({ bottom, rowHeight, padding: 2, contentRows: null }), floor);
+});
+
+test('content past the floor wins and clears the last row by one row height', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+    const contentRows = 6;
+
+    // The lowest bar's bottom edge, derived the way import.js draws it.
+    const contentBottom = bottom + padding + contentRows * (rowHeight + padding);
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding, contentRows }),
+        contentBottom + rowHeight
+    );
+    assert.ok(anchorY({ bottom, rowHeight, padding, contentRows }) > legacyAnchorY({ bottom, rowHeight }));
+});
+
+test('padding is counted once per row, not once in total', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const contentRows = 4;
+
+    const tight = anchorY({ bottom, rowHeight, padding: 0, contentRows });
+    const loose = anchorY({ bottom, rowHeight, padding: 10, contentRows });
+
+    // padding appears contentRows + 1 times: once before the first bar and
+    // once inside every row's pitch.
+    assert.equal(loose - tight, 10 * (contentRows + 1));
+});
+
+test('the anchor returns to the floor when the vacation data goes away', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+
+    const withData = anchorY({ bottom, rowHeight, padding, contentRows: 12 });
+    const afterRemoval = anchorY({ bottom, rowHeight, padding, contentRows: 0 });
+
+    assert.ok(withData > afterRemoval);
+    assert.equal(afterRemoval, legacyAnchorY({ bottom, rowHeight }));
+});
+
+test('one content row still cannot pull the anchor above the floor', () => {
+    // A single row of bars ends well inside the three-row minimum, so the
+    // floor has to win - otherwise every existing board with one row would
+    // shorten its line.
+    const bottom = 1000;
+    const rowHeight = 100;
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 1 }),
+        legacyAnchorY({ bottom, rowHeight })
+    );
+});
+
+test('the anchor scales with the calendar, like the circle does', () => {
+    const small = anchorY({ bottom: 0, rowHeight: 50, padding: 1, contentRows: 5 });
+    const large = anchorY({ bottom: 0, rowHeight: 100, padding: 2, contentRows: 5 });
+
+    assert.equal(large, small * 2);
+});
+
+// --- the anchor's guard, reusing shouldMoveIndicatorY -------------------------
+
+test('a legacy anchor does not move while there is no vacation data', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const target = anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 });
+
+    // placedAnchorY absent: an indicator drawn before this field existed.
+    assert.equal(
+        shouldMoveIndicatorY(target, undefined, legacyAnchorY({ bottom, rowHeight }), 0.5),
+        false
+    );
+});
+
+test('a legacy anchor does move once vacation rows exist', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const target = anchorY({ bottom, rowHeight, padding: 2, contentRows: 8 });
+
+    assert.equal(
+        shouldMoveIndicatorY(target, undefined, legacyAnchorY({ bottom, rowHeight }), 0.5),
+        true
+    );
+});
+
+test('an anchor dragged by hand is not clawed back while the target is unchanged', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+    const target = anchorY({ bottom, rowHeight, padding, contentRows: 8 });
+
+    // placedAnchorY is what we wrote; the user has since dragged the anchor
+    // 400px further down, which the guard never sees and must not undo.
+    assert.equal(shouldMoveIndicatorY(target, target, legacyAnchorY({ bottom, rowHeight }), 0.5), false);
 });

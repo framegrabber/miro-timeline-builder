@@ -47,3 +47,40 @@ export function shouldMoveIndicatorY(y, placedY, legacyY, nudge) {
     const lastWritten = placedY ?? legacyY;
     return Math.abs(y - lastWritten) >= nudge;
 }
+
+/**
+ * The minimum length of the dotted line, in row heights below the calendar.
+ *
+ * This is also the whole history of the anchor's y: before the length was
+ * derived from anything, createIndicator wrote exactly this and nothing ever
+ * wrote it again. legacyAnchorY below is that formula, which is why an anchor
+ * with no placedAnchorY on record can be compared against a fact rather than
+ * against a guess - see shouldMoveIndicatorY.
+ */
+export const MIN_ANCHOR_ROWS = 3;
+
+/**
+ * The centre y of the invisible shape the dotted line ends on.
+ *
+ * `contentRows` is what the vacation import wrote into the calendar entry: how
+ * many rows of bars sit below the calendar. The bars start at `bottom +
+ * padding` and step by `rowHeight + padding` (drawRows in import.js), so
+ * padding is counted per row rather than once - a line that stops half a bar
+ * short looks like a bug, and on a full-size board those two pixels per row
+ * add up.
+ *
+ * The extra `rowHeight` is deliberate slack: the line should visibly end past
+ * the content instead of flush with it. The floor keeps a calendar without any
+ * vacation data at the exact position it has had all along, so nothing on an
+ * existing board moves.
+ */
+export function anchorY({ bottom, rowHeight, padding, contentRows, minRows = MIN_ANCHOR_ROWS }) {
+    const rows = contentRows ?? 0;
+    const contentBottom = bottom + padding + rows * (rowHeight + padding);
+    return Math.max(bottom + minRows * rowHeight, contentBottom + rowHeight);
+}
+
+/** What createIndicator wrote before the length was derived from anything. */
+export function legacyAnchorY({ bottom, rowHeight }) {
+    return bottom + MIN_ANCHOR_ROWS * rowHeight;
+}
