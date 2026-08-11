@@ -261,7 +261,7 @@ async function drawCalendar() {
         // do; do not let a failure here cost the draw, for the same reason tagging
         // above is isolated.
         try {
-            await updateIndicators(dayjs());
+            await updateIndicators(dayjs(), { raise: true });
         } catch (error) {
             console.error('Could not update the TODAY indicator:', error);
         }

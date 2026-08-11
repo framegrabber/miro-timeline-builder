@@ -4,7 +4,17 @@ import assert from 'node:assert/strict';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
-import { columnForToday, indicatorY, shouldMoveIndicatorY } from '../src/todayColumn.js';
+import {
+    columnForToday,
+    indicatorY,
+    shouldMoveIndicatorY,
+    shouldPass,
+    anchorY,
+    legacyAnchorY,
+    MIN_ANCHOR_ROWS,
+    connectorState,
+    endpointItemId,
+} from '../src/indicatorGeometry.js';
 import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -191,4 +201,200 @@ test('shouldMoveIndicatorY compares against placedY, not the reconstruction, onc
     // legacyY (the pre-holiday value) must be ignored once placedY exists.
     assert.equal(shouldMoveIndicatorY(900, 900, 1000, 0.5), false);
     assert.equal(shouldMoveIndicatorY(850, 900, 1000, 0.5), true);
+});
+
+// --- the anchor's height ------------------------------------------------------
+
+test('with no vacation rows the anchor sits exactly where it always did', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 }),
+        bottom + MIN_ANCHOR_ROWS * rowHeight
+    );
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 }),
+        legacyAnchorY({ bottom, rowHeight })
+    );
+});
+
+test('a missing contentRows counts as none', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const floor = legacyAnchorY({ bottom, rowHeight });
+
+    assert.equal(anchorY({ bottom, rowHeight, padding: 2 }), floor);
+    assert.equal(anchorY({ bottom, rowHeight, padding: 2, contentRows: null }), floor);
+});
+
+test('content past the floor wins and clears the last row by one row height', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+    const contentRows = 6;
+
+    // One padding past the lowest bar's bottom edge: anchorY counts padding
+    // contentRows + 1 times, while drawRows (src/import.js) puts the last bar's
+    // bottom edge one padding higher. The gap is intended - the line is meant
+    // to end visibly past the content, not flush with it.
+    const contentBottom = bottom + padding + contentRows * (rowHeight + padding);
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding, contentRows }),
+        contentBottom + rowHeight
+    );
+    assert.ok(anchorY({ bottom, rowHeight, padding, contentRows }) > legacyAnchorY({ bottom, rowHeight }));
+});
+
+test('padding is counted once per row, not once in total', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const contentRows = 4;
+
+    const tight = anchorY({ bottom, rowHeight, padding: 0, contentRows });
+    const loose = anchorY({ bottom, rowHeight, padding: 10, contentRows });
+
+    // padding appears contentRows + 1 times: once before the first bar and
+    // once inside every row's pitch.
+    assert.equal(loose - tight, 10 * (contentRows + 1));
+});
+
+test('the anchor returns to the floor when the vacation data goes away', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+
+    const withData = anchorY({ bottom, rowHeight, padding, contentRows: 12 });
+    const afterRemoval = anchorY({ bottom, rowHeight, padding, contentRows: 0 });
+
+    assert.ok(withData > afterRemoval);
+    assert.equal(afterRemoval, legacyAnchorY({ bottom, rowHeight }));
+});
+
+test('one content row still cannot pull the anchor above the floor', () => {
+    // A single row of bars ends well inside the three-row minimum, so the
+    // floor has to win - otherwise every existing board with one row would
+    // shorten its line.
+    const bottom = 1000;
+    const rowHeight = 100;
+
+    assert.equal(
+        anchorY({ bottom, rowHeight, padding: 2, contentRows: 1 }),
+        legacyAnchorY({ bottom, rowHeight })
+    );
+});
+
+test('the anchor scales with the calendar, like the circle does', () => {
+    const small = anchorY({ bottom: 0, rowHeight: 50, padding: 1, contentRows: 5 });
+    const large = anchorY({ bottom: 0, rowHeight: 100, padding: 2, contentRows: 5 });
+
+    assert.equal(large, small * 2);
+});
+
+// --- the anchor's guard, reusing shouldMoveIndicatorY -------------------------
+
+test('a legacy anchor does not move while there is no vacation data', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const target = anchorY({ bottom, rowHeight, padding: 2, contentRows: 0 });
+
+    // placedAnchorY absent: an indicator drawn before this field existed.
+    assert.equal(
+        shouldMoveIndicatorY(target, undefined, legacyAnchorY({ bottom, rowHeight }), 0.5),
+        false
+    );
+});
+
+test('a legacy anchor does move once vacation rows exist', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const target = anchorY({ bottom, rowHeight, padding: 2, contentRows: 8 });
+
+    assert.equal(
+        shouldMoveIndicatorY(target, undefined, legacyAnchorY({ bottom, rowHeight }), 0.5),
+        true
+    );
+});
+
+test('an anchor dragged by hand is not clawed back while the target is unchanged', () => {
+    const bottom = 1000;
+    const rowHeight = 100;
+    const padding = 2;
+    const target = anchorY({ bottom, rowHeight, padding, contentRows: 8 });
+
+    // placedAnchorY is what we wrote; the user has since dragged the anchor
+    // 400px further down, which the guard never sees and must not undo.
+    assert.equal(shouldMoveIndicatorY(target, target, legacyAnchorY({ bottom, rowHeight }), 0.5), false);
+});
+
+// --- the tick's day guard -----------------------------------------------------
+
+test('a pass on a date we have already covered is skipped', () => {
+    assert.equal(shouldPass('2026-08-11', '2026-08-11'), false);
+});
+
+test('a new date lets the pass through', () => {
+    assert.equal(shouldPass('2026-08-12', '2026-08-11'), true);
+});
+
+test('the first pass after the board opened always runs', () => {
+    assert.equal(shouldPass('2026-08-11', null), true);
+    assert.equal(shouldPass('2026-08-11', undefined), true);
+});
+
+// --- the connector's endpoints ------------------------------------------------
+
+test('a connector on the circle and the anchor reads as attached', () => {
+    const connector = { start: { item: 'circle-1' }, end: { item: 'anchor-1' } };
+    assert.equal(connectorState(connector, 'circle-1', 'anchor-1'), 'attached');
+});
+
+test('an endpoint handed back as a resolved item still reads as attached', () => {
+    // The SDK reference does not pin the endpoint's shape down; an object with
+    // an id must not be mistaken for a detached line, or every writing pass
+    // would redraw a perfectly healthy connector.
+    const connector = { start: { item: { id: 'circle-1' } }, end: { item: { id: 'anchor-1' } } };
+    assert.equal(connectorState(connector, 'circle-1', 'anchor-1'), 'attached');
+});
+
+test('endpoints pointing elsewhere read as detached', () => {
+    assert.equal(
+        connectorState({ start: { item: 'circle-1' }, end: { item: 'someone-else' } }, 'circle-1', 'anchor-1'),
+        'detached'
+    );
+    assert.equal(
+        connectorState({ start: { item: 'someone-else' }, end: { item: 'anchor-1' } }, 'circle-1', 'anchor-1'),
+        'detached'
+    );
+});
+
+test('one missing endpoint is enough to be unreadable, not detached', () => {
+    // The regression this pins: while the check required BOTH ends to be
+    // absent, a connector with one readable end was called detached and
+    // redrawn, and a hand-detached one with neither end readable was accepted.
+    assert.equal(connectorState({ start: { item: 'circle-1' } }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(connectorState({ end: { item: 'anchor-1' } }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(connectorState({}, 'circle-1', 'anchor-1'), 'unreadable');
+});
+
+test('an endpoint in no known shape is unreadable', () => {
+    assert.equal(connectorState({ start: {}, end: {} }, 'circle-1', 'anchor-1'), 'unreadable');
+    assert.equal(
+        connectorState({ start: { item: {} }, end: { item: { id: 'anchor-1' } } }, 'circle-1', 'anchor-1'),
+        'unreadable'
+    );
+});
+
+test('no connector at all is gone, which is the one case worth redrawing blind', () => {
+    assert.equal(connectorState(null, 'circle-1', 'anchor-1'), 'gone');
+    assert.equal(connectorState(undefined, 'circle-1', 'anchor-1'), 'gone');
+});
+
+test('endpointItemId reads both shapes and refuses to guess at anything else', () => {
+    assert.equal(endpointItemId({ item: 'circle-1' }), 'circle-1');
+    assert.equal(endpointItemId({ item: { id: 'circle-1' } }), 'circle-1');
+    assert.equal(endpointItemId({ item: null }), null);
+    assert.equal(endpointItemId({}), null);
+    assert.equal(endpointItemId(undefined), null);
 });

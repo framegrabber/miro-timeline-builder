@@ -1,7 +1,9 @@
+import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { findCalendars, updateCalendar } from './anchors.js';
 import { xOfColumn, widthOfColumns } from './calendar.js';
 import { parseVacations, planVacations, yearsIn } from './vacation.js';
+import { updateIndicators } from './today.js';
 
 const METADATA_KEY = 'timelineBuilder';
 
@@ -47,9 +49,20 @@ async function runImport() {
 
         await updateCalendar(calendar.entry.calendarId, {
             vacationItemIds: shapes.map((shape) => shape.id),
+            vacationRows: rows.length,
         });
 
         if (shapes.length > 1) await run(() => board.group({ items: shapes }));
+
+        // The bars just changed how far the content reaches below the calendar,
+        // and they were drawn after the indicator, so they cover its line. Both
+        // are fixed by the same pass. Isolated: a decoration must not cost an
+        // import that has already succeeded.
+        try {
+            await updateIndicators(dayjs(), { raise: true });
+        } catch (error) {
+            console.error('Could not update the TODAY indicator:', error);
+        }
 
         logStats(calendar, shapes.length);
 
@@ -163,7 +176,14 @@ async function removePreviousImport(entry) {
         }
     }
 
-    await updateCalendar(entry.calendarId, { vacationItemIds: remaining });
+    // Only a removal that confirmed every bar is gone may shorten the line.
+    // Bars we could not confirm might still be on the board, and a line that
+    // stops above them would be a lie - the same caution holidayDraw.js applies
+    // to markedColumns.
+    await updateCalendar(entry.calendarId, {
+        vacationItemIds: remaining,
+        vacationRows: remaining.length === 0 ? 0 : (entry.vacationRows ?? 0),
+    });
 }
 
 // Bars sit directly under the day row and take the calendar's own measured row
@@ -236,6 +256,7 @@ async function drawRows(calendar, rows) {
         // neither find nor remove them and every retry stacks more on top.
         await updateCalendar(entry.calendarId, {
             vacationItemIds: shapes.map((shape) => shape.id),
+            vacationRows: rows.length,
         });
         throw failure.reason;
     }
