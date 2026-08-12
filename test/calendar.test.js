@@ -562,3 +562,65 @@ test('describeRange names a window by its months', () => {
         '2026 (Apr-Jun)'
     );
 });
+
+// --- measuring a window rather than a whole year -------------------------------
+
+test('a measured window puts its first drawn column where it was measured', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+    const cellWidth = 100;
+    const pitch = cellWidth + 2;
+
+    // What the board would report for a window drawn with its first cell's
+    // left edge at x = 5000.
+    const firstCenterX = 5000 + cellWidth / 2;
+    const lastCenterX = firstCenterX + (range.columns - 1) * pitch;
+
+    const grid = gridFrom({
+        firstCenterX,
+        lastCenterX,
+        cellWidth,
+        columns: range.columns,
+        firstColumn: range.firstColumn,
+    });
+
+    assert.equal(grid.shapeWidth, cellWidth);
+    assert.ok(Math.abs(grid.padding - 2) < 1e-6);
+    // Asking for the absolute column of the first drawn cell must give back the
+    // left edge it was measured at.
+    assert.ok(Math.abs(xOfColumn(grid, range.firstColumn) - 5000) < 1e-6);
+    // And the last drawn column lands on the last measured centre.
+    const lastLeft = xOfColumn(grid, range.firstColumn + range.columns - 1);
+    assert.ok(Math.abs(lastLeft + cellWidth / 2 - lastCenterX) < 1e-6);
+});
+
+test('a window and a whole year agree about a column they share', () => {
+    const cellWidth = 100;
+    const pitch = cellWidth + 2;
+    const whole = fullYearRange(2026);
+    const window = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+    // Both drawn so that absolute column 0 sits at x = 0.
+    const wholeGrid = gridFrom({
+        firstCenterX: cellWidth / 2,
+        lastCenterX: cellWidth / 2 + (whole.columns - 1) * pitch,
+        cellWidth,
+        columns: whole.columns,
+        firstColumn: whole.firstColumn,
+    });
+    const windowGrid = gridFrom({
+        firstCenterX: window.firstColumn * pitch + cellWidth / 2,
+        lastCenterX: (window.firstColumn + window.columns - 1) * pitch + cellWidth / 2,
+        cellWidth,
+        columns: window.columns,
+        firstColumn: window.firstColumn,
+    });
+
+    const column = window.firstColumn + 20;
+    assert.ok(Math.abs(xOfColumn(wholeGrid, column) - xOfColumn(windowGrid, column)) < 1e-6);
+});
+
+test('an absent firstColumn still means column zero', () => {
+    const sane = { firstCenterX: 50, lastCenterX: 50 + 260 * 102, cellWidth: 100, columns: 261 };
+
+    assert.deepEqual(gridFrom(sane), gridFrom({ ...sane, firstColumn: 0 }));
+});

@@ -241,12 +241,20 @@ export function clipBlocks(blocks, { firstColumn, columns }) {
  * The measured x of a cell is its centre, because app.js creates shapes
  * centred - hence the half-width shift back to the left edge.
  *
+ * `startX` is the x that column 0 would have, not the x of the first drawn
+ * cell. For a calendar drawn over the whole year those are the same thing,
+ * which is why this argument defaults to 0 and nothing else had to change. For
+ * a window they are not, and anchoring column 0 is what lets every caller keep
+ * asking for an absolute column - holidays, vacation bars and the TODAY
+ * indicator all position themselves through xOfColumn and need no idea that a
+ * window exists.
+ *
  * Returns null when the measurement cannot describe a grid. That is the case
  * once a single cell has been dragged out of the calendar: the derived pitch
  * then describes nothing real, and putting something plausible-looking in the
  * wrong place is worse than putting nothing anywhere.
  */
-export function gridFrom({ firstCenterX, lastCenterX, cellWidth, columns }) {
+export function gridFrom({ firstCenterX, lastCenterX, cellWidth, columns, firstColumn = 0 }) {
     if (!(cellWidth > 0) || !(columns > 1)) return null;
 
     const pitch = (lastCenterX - firstCenterX) / (columns - 1);
@@ -255,7 +263,7 @@ export function gridFrom({ firstCenterX, lastCenterX, cellWidth, columns }) {
     if (!(pitch > 0) || padding < 0 || padding > cellWidth) return null;
 
     return {
-        startX: firstCenterX - cellWidth / 2,
+        startX: firstCenterX - cellWidth / 2 - firstColumn * pitch,
         shapeWidth: cellWidth,
         padding,
     };
