@@ -203,6 +203,23 @@ export function widthOfColumns({ shapeWidth, padding }, colSpan) {
     return shapeWidth * colSpan + (colSpan - 1) * padding;
 }
 
+/** The centre-to-centre distance between two neighbouring columns. */
+export function pitchOf({ shapeWidth, padding }) {
+    return shapeWidth + padding;
+}
+
+/**
+ * Whether `column` falls inside a drawn window.
+ *
+ * `range` is anything shaped like `{ firstColumn, columns }` - the drawn
+ * window, but also, in `spans.js`, a date span turned into the same shape so
+ * the two can be tested against each other with this one function instead of
+ * a second bounds check.
+ */
+export function containsColumn({ firstColumn, columns }, column) {
+    return column >= firstColumn && column < firstColumn + columns;
+}
+
 /**
  * Cuts a full year's blocks down to the drawn window.
  *

@@ -1,4 +1,4 @@
-import { columnOf } from './calendar.js';
+import { columnOf, containsColumn } from './calendar.js';
 
 /**
  * The grid column today belongs in, or null when the drawn calendar does not
@@ -21,7 +21,7 @@ import { columnOf } from './calendar.js';
  */
 export function columnForToday({ year, firstColumn, columns }, today) {
     const column = columnOf(year, today);
-    if (column < firstColumn || column >= firstColumn + columns) return null;
+    if (!containsColumn({ firstColumn, columns }, column)) return null;
     return column;
 }
 

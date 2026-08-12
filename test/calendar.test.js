@@ -15,6 +15,8 @@ import {
     quarterBlocks,
     xOfColumn,
     widthOfColumns,
+    pitchOf,
+    containsColumn,
     nextWorkingDay,
     previousWorkingDay,
     gridFrom,
@@ -237,6 +239,21 @@ test('a block of N columns is as wide as N single-day blocks', () => {
     const single = widthOfColumns(GEOMETRY, 1);
     assert.equal(single, GEOMETRY.shapeWidth);
     assert.equal(widthOfColumns(GEOMETRY, 5), 5 * single + 4 * GEOMETRY.padding);
+});
+
+test('pitchOf is the centre-to-centre distance xOfColumn already uses', () => {
+    assert.equal(pitchOf(GEOMETRY), GEOMETRY.shapeWidth + GEOMETRY.padding);
+    assert.equal(xOfColumn(GEOMETRY, 4) - xOfColumn(GEOMETRY, 1), 3 * pitchOf(GEOMETRY));
+});
+
+test('containsColumn is true for every column of the window and false just outside it', () => {
+    const range = { firstColumn: 10, columns: 5 }; // columns 10..14
+
+    assert.equal(containsColumn(range, 10), true);
+    assert.equal(containsColumn(range, 12), true);
+    assert.equal(containsColumn(range, 14), true);
+    assert.equal(containsColumn(range, 9), false);
+    assert.equal(containsColumn(range, 15), false);
 });
 
 test('every row lands on a real day column across all years', () => {

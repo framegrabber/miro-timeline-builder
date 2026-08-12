@@ -1,4 +1,4 @@
-import { columnOf, nextWorkingDay, previousWorkingDay } from './calendar.js';
+import { columnOf, containsColumn, nextWorkingDay, previousWorkingDay } from './calendar.js';
 
 /**
  * Places one date span on the grid of one drawn calendar.
@@ -17,6 +17,7 @@ import { columnOf, nextWorkingDay, previousWorkingDay } from './calendar.js';
  * Returns either a placement or a single problem, never both.
  */
 export function placeSpan({ year, firstColumn, columns }, start, end) {
+    const range = { firstColumn, columns };
     const lastColumn = firstColumn + columns - 1;
 
     // A period reported as Sat-Sun means the working days inside it.
@@ -28,7 +29,14 @@ export function placeSpan({ year, firstColumn, columns }, start, end) {
     const rawStart = columnOf(year, from);
     const rawEnd = columnOf(year, to);
 
-    if (rawEnd < firstColumn || rawStart > lastColumn) return { problem: 'outside-range' };
+    // Two intervals overlap exactly when at least one of them starts inside
+    // the other. Testing only "does the span start inside the window" would
+    // miss a span that swallows the window whole (its own start lying before
+    // firstColumn) - the second half catches that by testing it the other way
+    // round, whether the window's start lies inside the span.
+    const span = { firstColumn: rawStart, columns: rawEnd - rawStart + 1 };
+    const overlaps = containsColumn(range, rawStart) || containsColumn(span, firstColumn);
+    if (!overlaps) return { problem: 'outside-range' };
 
     const colStart = Math.max(firstColumn, rawStart);
     const colEnd = Math.min(lastColumn, rawEnd);

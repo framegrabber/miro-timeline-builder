@@ -10,6 +10,7 @@ import {
     widthOfColumns,
     rangeFrom,
     clipBlocks,
+    pitchOf,
 } from './calendar.js';
 import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
@@ -267,6 +268,11 @@ async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
+    // Not reachable from this panel today: validateRange already guarantees
+    // rangeFromMonth <= rangeToMonth, and every whole month has at least 18
+    // working days, so rangeFromSettings cannot return null here. The guard
+    // stays anyway - it is cheap, and rangeFromSettings is not written to
+    // assume a caller that always validates first.
     const range = rangeFromSettings(settings);
     if (!range) {
         setBusy(false, 'That range has no working days to draw. Pick a wider one.');
@@ -278,7 +284,7 @@ async function drawCalendar() {
     // right of the viewport as its first column is into the year. Pulling the
     // origin back by exactly that much puts the first *drawn* column where the
     // user is looking.
-    settings.startX -= range.firstColumn * (settings.shapeWidth + settings.padding);
+    settings.startX -= range.firstColumn * pitchOf(settings);
 
     const rows = planRows(year, settings, range);
     const total = rows.reduce((count, row) => count + row.blocks.length, 0);
@@ -450,9 +456,13 @@ function validateRange() {
     if (!from || !to) return true;
 
     const group = from.closest('.form-group');
+    const toGroup = to.closest('.form-group');
     const isValid = parseInt(to.value) >= parseInt(from.value);
 
+    // Both selects contradict each other, so both are marked - but there is
+    // only one status text, kept on the "From" group where it has always been.
     group.classList.toggle('error', !isValid);
+    toGroup.classList.toggle('error', !isValid);
     group.querySelector('.status-text').style.display = isValid ? 'none' : 'block';
 
     if (!isValid) group.scrollIntoView({ behavior: 'smooth', block: 'center' });

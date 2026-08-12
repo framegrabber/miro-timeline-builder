@@ -90,7 +90,7 @@ export async function findCalendars() {
     const resolved = [];
 
     for (const entry of stored) {
-        const { calendar, reason } = await measure(entry);
+        const { calendar, reason, detail } = await measure(entry);
 
         if (reason === 'missing') {
             console.warn(`Timeline Builder: anchors missing for calendar ${entry.calendarId}, dropping entry.`);
@@ -104,7 +104,11 @@ export async function findCalendars() {
         }
 
         if (reason === 'implausible') {
-            console.warn(`Timeline Builder: measurement implausible for calendar ${entry.calendarId}, skipping.`);
+            // The reason value stays 'implausible' either way - callers only
+            // branch on that - but the message says which of the two checks
+            // failed, so a hand-edited AppData blob (bad range) is tellable
+            // from a dragged-out day cell (bad geometry) without a debugger.
+            console.warn(`Timeline Builder: ${detail} for calendar ${entry.calendarId}, skipping.`);
             alive.push(entry);
             continue;
         }
@@ -193,7 +197,9 @@ async function measure(entry) {
     const range = entry.range
         ? rangeFrom({ year: entry.year, ...entry.range })
         : fullYearRange(entry.year);
-    if (!range) return { calendar: null, reason: 'implausible' };
+    if (!range) {
+        return { calendar: null, reason: 'implausible', detail: 'stored range does not resolve' };
+    }
 
     const grid = gridFrom({
         firstCenterX: firstDay.x,
@@ -202,7 +208,9 @@ async function measure(entry) {
         columns: range.columns,
         firstColumn: range.firstColumn,
     });
-    if (!grid) return { calendar: null, reason: 'implausible' };
+    if (!grid) {
+        return { calendar: null, reason: 'implausible', detail: 'measured geometry is implausible' };
+    }
 
     return {
         calendar: {

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 
 import { placeSpan, groupIntoRows } from './spans.js';
-import { columnOf, isWorkingDay, describeRange } from './calendar.js';
+import { columnOf, containsColumn, isWorkingDay, describeRange } from './calendar.js';
 import { stringToColor } from './colors.js';
 
 /**
@@ -198,7 +198,7 @@ export function planStickies(entries, range, { selected, names }) {
         // mark and no column to hang a sticky over. Named rather than dropped,
         // for the same reason an out-of-range vacation entry is named - a wrong
         // date and a date outside the section must not look the same.
-        if (column < range.firstColumn || column >= range.firstColumn + range.columns) {
+        if (!containsColumn(range, column)) {
             problems.push(`${entry.name}: is not in the drawn range ${describeRange(range)}.`);
             continue;
         }

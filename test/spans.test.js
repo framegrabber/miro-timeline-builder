@@ -131,3 +131,15 @@ test('a span entirely after the window is outside the range too', () => {
         problem: 'outside-range',
     });
 });
+
+test('a span that swallows the whole window is clipped to it, not reported outside', () => {
+    // Neither endpoint of a July-December vacation falls inside a
+    // September-only window, but the two ranges still overlap - the case the
+    // overlap test's second half exists for.
+    const september = rangeFrom({ year: 2026, from: '2026-09-01', to: '2026-09-30' });
+    const placed = placeSpan(september, day('2026-07-01'), day('2026-12-31'));
+
+    assert.equal(placed.colStart, september.firstColumn);
+    assert.equal(placed.colSpan, september.columns);
+    assert.equal(placed.clipped, true);
+});
