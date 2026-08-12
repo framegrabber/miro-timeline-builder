@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 
 import { placeSpan, groupIntoRows } from './spans.js';
+import { describeRange } from './calendar.js';
 import { stringToColor } from './colors.js';
 
 /**
@@ -72,25 +73,25 @@ export function yearsIn(entries) {
 }
 
 /**
- * Places every entry on the grid of one drawn year.
+ * Places every entry on the grid of one drawn calendar.
  *
  * The arithmetic lives in spans.js, shared with the school holiday bands. Only
  * the comparison against the duration SAP reported is specific to this caller.
  */
-export function planVacations(entries, year) {
+export function planVacations(entries, range) {
     const problems = [];
     const placed = [];
 
     for (const entry of entries) {
         const where = `${entry.employee} (${entry.label})`;
-        const span = placeSpan(year, entry.start, entry.end);
+        const span = placeSpan(range, entry.start, entry.end);
 
         if (span.problem === 'no-working-day') {
             problems.push(`${where}: contains no working day.`);
             continue;
         }
-        if (span.problem === 'outside-year') {
-            problems.push(`${where}: is not in ${year}.`);
+        if (span.problem === 'outside-range') {
+            problems.push(`${where}: is not in the drawn range ${describeRange(range)}.`);
             continue;
         }
 
