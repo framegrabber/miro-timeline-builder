@@ -12,11 +12,20 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
 
 ## Checkliste für die Prüfung am Board
 
-1. **Ganzes Jahr unverändert.** Kalender für 2026 mit Januar–Dezember
-   zeichnen.
-   Erwartet: dieselbe Breite, dieselben Beschriftungen, dieselbe Zahl im
-   Fortschritt wie vor der Änderung. (Rein visuelle Prüfung, kein
-   Konsolen- oder Panel-String dafür im Code gefunden.)
+1. **Ganzes Jahr: gleiche Form, geschnittene Ränder.** Kalender für 2026 mit
+   Januar–Dezember zeichnen.
+   Erwartet: dieselbe Zahl an Shapes, dieselben Beschriftungen, dieselbe Zahl
+   im Fortschritt wie vor der Änderung — aber nicht mehr dieselbe Breite an den
+   Rändern. `clipBlocks` (`src/calendar.js:221`) läuft für jedes Fenster, auch
+   das ganzjährige (`src/app.js:264`), und schneidet den Überhang ab, den ein
+   Wochen- oder Iterationsblock über den 1. Januar oder den 31. Dezember hinaus
+   hatte. Konkret für 2026: der erste Wochenblock schrumpft von `{ colStart:
+   -3, colSpan: 5 }` auf `{ colStart: 0, colSpan: 2 }`, der letzte Wochenblock
+   von `colSpan 5` auf `4`; bei zehntägigen Iterationen schrumpft der letzte
+   Block von `252/10` auf `252/9`. Am Board sieht man das als flush
+   abschließende erste und letzte Wochen-/Iterationszelle statt der bisher
+   überhängenden. (Rein visuelle Prüfung, kein Konsolen- oder Panel-String
+   dafür im Code gefunden.)
 
 2. **Bestehender Kalender bleibt adressierbar.** Ein vor dieser Änderung
    gezeichneter Kalender: Urlaub importieren.
@@ -104,7 +113,7 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
 
 | Schritt | Ergebnis | Datum | Wer |
 |---|---|---|---|
-| 1. Ganzes Jahr unverändert | | | |
+| 1. Ganzes Jahr: gleiche Form, geschnittene Ränder | | | |
 | 2. Bestehender Kalender bleibt adressierbar | | | |
 | 3. H2 landet im Blickfeld | | | |
 | 4. Randblöcke tragen ihre Beschriftung | | | |

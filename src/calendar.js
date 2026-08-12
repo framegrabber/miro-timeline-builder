@@ -45,8 +45,10 @@ export function lastWorkingDayOf(year) {
 
 /**
  * Grid column of a date, as a signed count of working days from column 0.
- * Negative for dates before the year starts, which is how a week block whose
- * Monday sits in the previous year hangs off the left edge.
+ * Negative for dates before the year starts - that is what lets a week block
+ * whose Monday sits in the previous year be positioned at all, so `clipBlocks`
+ * has something to cut back to the first drawn column instead of a block that
+ * simply does not exist.
  *
  * Every comparison is to the day, never to the millisecond. Without the 'day'
  * granularity dayjs compares instants: the loop variable sits at midnight, so
