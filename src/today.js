@@ -79,7 +79,7 @@ async function storedIndicator(calendarId) {
  */
 export async function syncIndicator(calendar, today, { raise = false } = {}) {
     const { entry, grid } = calendar;
-    const column = columnForToday(calendar.year, today);
+    const column = columnForToday(calendar.range, today);
     const wanted = entry.indicator.enabled && column !== null;
 
     if (!wanted) {

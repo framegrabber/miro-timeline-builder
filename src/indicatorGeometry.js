@@ -1,21 +1,27 @@
-import { columnOf, totalWorkingDays } from './calendar.js';
+import { columnOf } from './calendar.js';
 
 /**
- * The grid column today belongs in, or null when the year does not contain it.
+ * The grid column today belongs in, or null when the drawn calendar does not
+ * contain it.
  *
  * Saturdays and Sundays have no column of their own. columnOf counts working
  * days, so a weekend already resolves to the coming Monday - the agreed
  * behaviour needs no special case here, only the test that pins it down.
  *
- * This module is the indicator's arithmetic, and nothing else. It imports
- * nothing but calendar.js: today.js also pulls
- * in board.js, which evaluates window.miro.board at module scope. Under
+ * The bounds are the drawn window's, not the year's. A calendar drawn for the
+ * first half of the year has no column for a day in September, and the caller
+ * treats that exactly like a disabled indicator: none is drawn, and an existing
+ * one is removed. A marker for "today" on a calendar that does not contain
+ * today would be a false statement.
+ *
+ * Kept in its own file, importing nothing but calendar.js: today.js also pulls
+ * in board.js, which evaluates window.miro at module scope. Under
  * `node --test` there is no window, so a test importing this pure function
  * through today.js would fail on import alone, before any assertion runs.
  */
-export function columnForToday(year, today) {
+export function columnForToday({ year, firstColumn, columns }, today) {
     const column = columnOf(year, today);
-    if (column < 0 || column >= totalWorkingDays(year)) return null;
+    if (column < firstColumn || column >= firstColumn + columns) return null;
     return column;
 }
 
