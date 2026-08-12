@@ -93,6 +93,22 @@ Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
         document.getElementById(targetId).classList.toggle('hidden', !event.target.checked);
     });
 });
+
+// Quick sets, not a second source of truth: they only move the two selects, so
+// there is exactly one place the range is read from.
+const rangePresets = {
+    rangeFullYear: [0, 11],
+    rangeFirstHalf: [0, 5],
+    rangeSecondHalf: [6, 11],
+};
+
+Object.entries(rangePresets).forEach(([buttonId, [fromMonth, toMonth]]) => {
+    document.getElementById(buttonId).addEventListener('click', () => {
+        document.getElementById('rangeFromMonth').value = String(fromMonth);
+        document.getElementById('rangeToMonth').value = String(toMonth);
+        validateRange();
+    });
+});
   
 // Draws one row of the calendar from blocks produced by calendar.js.
 // All geometry lives in calendar.js - this only turns blocks into Miro shapes.
