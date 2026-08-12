@@ -290,3 +290,73 @@ export function quarterBlocks(year, qOneStartMonth) {
         return block;
     });
 }
+
+// --- the drawn range ----------------------------------------------------------
+
+/**
+ * The one place a drawn range is made, and the only shape of range there is.
+ *
+ * `year` travels inside the object because every consumer needs it for
+ * columnOf, and a year passed separately from its bounds is a pair that can
+ * drift. `from` and `to` come back moved onto working days, which makes the
+ * result idempotent: feeding a stored range back in yields the same object, so
+ * measure() can resolve what tagCalendar wrote without a second rule.
+ *
+ * Returns null rather than something plausible when the input cannot describe a
+ * grid - fewer than two columns has no pitch for gridFrom to measure, and a
+ * one-day calendar is not a calendar. Same choice gridFrom itself makes.
+ */
+export function rangeFrom({ year, from, to }) {
+    const yearStart = dayjs(`${year}-01-01`);
+    const yearEnd = dayjs(`${year}-12-31`);
+
+    let start = dayjs(from);
+    let end = dayjs(to);
+
+    if (!start.isValid() || !end.isValid()) return null;
+
+    // Clamped, not refused: a stored range predating a year change, or a
+    // half-open input, still describes a drawable window once cut to the year.
+    if (start.isBefore(yearStart, 'day')) start = yearStart;
+    if (end.isAfter(yearEnd, 'day')) end = yearEnd;
+
+    start = nextWorkingDay(start);
+    end = previousWorkingDay(end);
+
+    if (end.isBefore(start, 'day')) return null;
+
+    const firstColumn = columnOf(year, start);
+    const columns = columnOf(year, end) - firstColumn + 1;
+
+    if (columns < 2) return null;
+
+    return {
+        year,
+        from: start.format('YYYY-MM-DD'),
+        to: end.format('YYYY-MM-DD'),
+        firstColumn,
+        columns,
+    };
+}
+
+/** What a calendar entry without a stored range means. */
+export function fullYearRange(year) {
+    return rangeFrom({
+        year,
+        from: firstWorkingDayOf(year).format('YYYY-MM-DD'),
+        to: lastWorkingDayOf(year).format('YYYY-MM-DD'),
+    });
+}
+
+/**
+ * How a range is named to the user - in calendar dropdowns and in the note an
+ * import leaves for an entry it could not place.
+ */
+export function describeRange({ year, from, to }) {
+    const wholeYear = dayjs(from).isSame(firstWorkingDayOf(year), 'day')
+        && dayjs(to).isSame(lastWorkingDayOf(year), 'day');
+
+    if (wholeYear) return String(year);
+
+    return `${year} (${dayjs(from).format('MMM')}-${dayjs(to).format('MMM')})`;
+}

@@ -19,6 +19,9 @@ import {
     previousWorkingDay,
     gridFrom,
     clipBlocks,
+    rangeFrom,
+    fullYearRange,
+    describeRange,
 } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -472,4 +475,90 @@ test('a window spanning the whole year changes nothing', () => {
 
     assert.deepEqual(clipBlocks(monthBlocks(2026), whole), monthBlocks(2026));
     assert.deepEqual(clipBlocks(dayBlocks(2026), whole), dayBlocks(2026));
+});
+
+// --- the drawn range ----------------------------------------------------------
+
+test('January to December is the whole year', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-01-01', to: '2026-12-31' });
+
+    assert.equal(range.year, 2026);
+    assert.equal(range.firstColumn, 0);
+    assert.equal(range.columns, totalWorkingDays(2026));
+});
+
+test('fullYearRange is that range', () => {
+    assert.deepEqual(fullYearRange(2026), rangeFrom({
+        year: 2026,
+        from: '2026-01-01',
+        to: '2026-12-31',
+    }));
+});
+
+test('the second half of 2026 counted independently', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+    // Walk the year by hand rather than reusing the implementation's maths.
+    let before = 0;
+    let inside = 0;
+    for (let d = dayjs('2026-01-01'); d.year() === 2026; d = d.add(1, 'day')) {
+        if (d.isoWeekday() > 5) continue;
+        if (d.isBefore(dayjs('2026-07-01'), 'day')) before++;
+        else inside++;
+    }
+
+    assert.equal(range.firstColumn, before);
+    assert.equal(range.columns, inside);
+    assert.equal(range.firstColumn + range.columns, totalWorkingDays(2026));
+});
+
+test('a range starting on a weekend moves forward to the Monday', () => {
+    // 2026-08-01 is a Saturday, 2026-08-03 the Monday after it.
+    const range = rangeFrom({ year: 2026, from: '2026-08-01', to: '2026-08-31' });
+
+    assert.equal(range.from, '2026-08-03');
+    assert.equal(range.firstColumn, columnOf(2026, dayjs('2026-08-03')));
+});
+
+test('a range ending on a weekend moves back to the Friday', () => {
+    // 2026-05-31 is a Sunday, 2026-05-29 the Friday before it.
+    const range = rangeFrom({ year: 2026, from: '2026-05-01', to: '2026-05-31' });
+
+    assert.equal(range.to, '2026-05-29');
+});
+
+test('rangeFrom is idempotent, so a stored range resolves to itself', () => {
+    const once = rangeFrom({ year: 2026, from: '2026-08-01', to: '2026-10-31' });
+    const twice = rangeFrom({ year: 2026, from: once.from, to: once.to });
+
+    assert.deepEqual(twice, once);
+});
+
+test('dates outside the year are clamped to it', () => {
+    const range = rangeFrom({ year: 2026, from: '2025-06-01', to: '2027-06-30' });
+
+    assert.deepEqual(range, fullYearRange(2026));
+});
+
+test('a range that cannot be a grid is refused', () => {
+    assert.equal(rangeFrom({ year: 2026, from: '2026-09-01', to: '2026-03-31' }), null, 'to before from');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-03-02', to: '2026-03-02' }), null, 'a single column has no pitch');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-07-25', to: '2026-07-26' }), null, 'a weekend holds no working day');
+    assert.equal(rangeFrom({ year: 2026, from: 'not a date', to: '2026-12-31' }), null, 'unreadable from');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-01-01', to: '' }), null, 'missing to');
+});
+
+test('describeRange names a whole year by its year alone', () => {
+    assert.equal(describeRange(fullYearRange(2026)), '2026');
+});
+
+test('describeRange names a window by its months', () => {
+    assert.equal(
+        describeRange(rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' })),
+        '2026 (Jul-Dec)'
+    );
+    assert.equal(
+        describeRange(rangeFrom({ year: 2026, from: '2026-04-01', to: '2026-06-30' })),
+        '2026 (Apr-Jun)'
+    );
 });
