@@ -18,6 +18,7 @@ import {
     nextWorkingDay,
     previousWorkingDay,
     gridFrom,
+    clipBlocks,
 } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -396,4 +397,79 @@ test('the time of day does not shift a column before the year either', () => {
         columnOf(2026, dayjs('2025-12-30'))
     );
     assert.equal(columnOf(2026, dayjs('2025-12-31T23:59:59')), -1, 'the last working day before the year');
+});
+
+// --- clipping a full year down to a window ------------------------------------
+
+const WINDOW = { firstColumn: 10, columns: 5 }; // columns 10..14
+
+test('a block fully inside the window is untouched', () => {
+    const blocks = [{ label: 'inside', colStart: 11, colSpan: 3, extra: 'kept' }];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'inside', colStart: 11, colSpan: 3, extra: 'kept' },
+    ]);
+});
+
+test('a block fully outside the window is dropped', () => {
+    const blocks = [
+        { label: 'left', colStart: 0, colSpan: 5 },
+        { label: 'right', colStart: 15, colSpan: 5 },
+    ];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), []);
+});
+
+test('a block straddling the left edge is cut on the left', () => {
+    const blocks = [{ label: 'straddle', colStart: 8, colSpan: 5 }]; // 8..12
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'straddle', colStart: 10, colSpan: 3 }, // 10..12
+    ]);
+});
+
+test('a block straddling the right edge is cut on the right', () => {
+    const blocks = [{ label: 'straddle', colStart: 13, colSpan: 6 }]; // 13..18
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'straddle', colStart: 13, colSpan: 2 }, // 13..14
+    ]);
+});
+
+test('a block covering the whole window becomes the window', () => {
+    const blocks = [{ label: 'over', colStart: 0, colSpan: 100 }];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'over', colStart: 10, colSpan: 5 },
+    ]);
+});
+
+test('a block ending exactly on the first column survives with one column', () => {
+    const blocks = [{ label: 'touch', colStart: 6, colSpan: 5 }]; // 6..10
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'touch', colStart: 10, colSpan: 1 },
+    ]);
+});
+
+test('the day row is filtered, since every day block is one column wide', () => {
+    const clipped = clipBlocks(dayBlocks(2026), WINDOW);
+
+    assert.equal(clipped.length, 5);
+    assert.equal(clipped[0].colStart, 10);
+    assert.equal(clipped[4].colStart, 14);
+    // The weekday travels with the block: the day row's colours depend on it.
+    assert.equal(clipped[0].weekday, dayBlocks(2026)[10].weekday);
+});
+
+test('a clipped month row covers every column of the window exactly once', () => {
+    const window = { firstColumn: 130, columns: 60 };
+    const clipped = clipBlocks(monthBlocks(2026), window);
+    const covered = clipped.reduce((sum, block) => sum + block.colSpan, 0);
+
+    assert.equal(covered, window.columns);
+    assert.equal(clipped[0].colStart, window.firstColumn);
+    const last = clipped[clipped.length - 1];
+    assert.equal(last.colStart + last.colSpan - 1, window.firstColumn + window.columns - 1);
+});
+
+test('a window spanning the whole year changes nothing', () => {
+    const whole = { firstColumn: 0, columns: totalWorkingDays(2026) };
+
+    assert.deepEqual(clipBlocks(monthBlocks(2026), whole), monthBlocks(2026));
+    assert.deepEqual(clipBlocks(dayBlocks(2026), whole), dayBlocks(2026));
 });

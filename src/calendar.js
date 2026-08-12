@@ -202,6 +202,39 @@ export function widthOfColumns({ shapeWidth, padding }, colSpan) {
 }
 
 /**
+ * Cuts a full year's blocks down to the drawn window.
+ *
+ * The row builders above all compute a whole year and know nothing about
+ * windows. That is deliberate: teaching each of them to clip would put the same
+ * clamping arithmetic in five places, which is exactly what this project keeps
+ * out of its row builders. Computing 261 day blocks and dropping half of them
+ * costs nothing measurable.
+ *
+ * Every other field of a block is carried through, because the rows need them:
+ * the day row colours by `weekday`, the month row labels by `label`, the week
+ * row by `week`. Only colStart and colSpan are recomputed.
+ *
+ * A side effect worth naming: because the builders still count from the start of
+ * the year, iteration numbers keep counting too - a second-half calendar starts
+ * at Sprint 14, not at Sprint 1.
+ */
+export function clipBlocks(blocks, { firstColumn, columns }) {
+    const lastColumn = firstColumn + columns - 1;
+    const clipped = [];
+
+    for (const block of blocks) {
+        const colStart = Math.max(block.colStart, firstColumn);
+        const colEnd = Math.min(block.colStart + block.colSpan - 1, lastColumn);
+
+        if (colEnd < colStart) continue;
+
+        clipped.push({ ...block, colStart, colSpan: colEnd - colStart + 1 });
+    }
+
+    return clipped;
+}
+
+/**
  * Rebuilds the drawing settings from two measured day cells, so a calendar
  * that is already on the board can be addressed by date again.
  *
