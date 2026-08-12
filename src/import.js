@@ -25,9 +25,14 @@ async function runImport() {
         return;
     }
 
-    const calendar = await chooseCalendar(entries);
+    const { calendar, reason } = await chooseCalendar(entries);
     if (!calendar) {
-        setStatus('This board has no calendar for this data.', false);
+        setStatus(
+            reason === 'pick'
+                ? 'More than one calendar fits this data. Pick one below, then press Draw Vacation again.'
+                : 'This board has no calendar for this data.',
+            false
+        );
         showProblems(parseProblems);
         return;
     }
@@ -90,6 +95,19 @@ async function runImport() {
  * outside its year are reported by planVacations and skipped. Import twice and
  * pick the other calendar to cover both years - each calendar keeps its own
  * list of bars, so the two do not overwrite each other.
+ *
+ * With more than one candidate this never picks for the user. It used to: the
+ * dropdown was revealed and a default returned in the same pass, so the first
+ * click drew onto whichever calendar AppData happened to list first - the older
+ * one - and only then showed the choice that had already been made. Bars land
+ * on a board and have to be removed by hand, so the cost of guessing wrong is
+ * paid by the user, not by the next click.
+ *
+ * Instead the pick is required, every time: the select is rebuilt with a
+ * placeholder in front, nothing is drawn, and the reason says why. The
+ * selection is read *before* the rebuild, because the second click is the one
+ * carrying it, and cleared right after it resolves, so the next import asks
+ * again rather than inheriting a choice made for different data.
  */
 async function chooseCalendar(entries) {
     const years = yearsIn(entries);
@@ -98,38 +116,43 @@ async function chooseCalendar(entries) {
     const choice = document.getElementById('calendarChoice');
     const select = document.getElementById('targetCalendar');
 
-    if (candidates.length <= 1) {
+    if (candidates.length === 0) return { calendar: null, reason: 'none' };
+
+    if (candidates.length === 1) {
         choice.classList.add('hidden');
-        return candidates[0] ?? null;
+        return { calendar: candidates[0], reason: null };
     }
 
-    // Compare the candidate set by identity, not by length: a calendar deleted
-    // and another drawn in the same session can leave the same count behind,
-    // and rebuilding only on a count change would let the dropdown keep
-    // showing stale entries while the code resolves against the new list.
-    const currentIds = Array.from(select.options, (option) => option.value);
-    const candidateIds = candidates.map((candidate) => candidate.entry.calendarId);
-    const sameCandidates = currentIds.length === candidateIds.length
-        && currentIds.every((id) => candidateIds.includes(id));
+    // Read first: this call is the click that follows the user's pick, and the
+    // rebuild below would wipe it. A stale id - a calendar deleted since the
+    // dropdown was filled - resolves to nothing and asks again.
+    const picked = candidates.find((candidate) => candidate.entry.calendarId === select.value);
 
-    if (!sameCandidates) {
-        const previousSelection = select.value;
-        select.innerHTML = '';
-        for (const candidate of candidates) {
-            const option = document.createElement('option');
-            option.value = candidate.entry.calendarId;
-            option.textContent = describeRange(candidate.range);
-            select.appendChild(option);
-        }
-        // Keep the user's choice if it is still among the candidates; otherwise
-        // the select falls back to its first option, same as before.
-        if (candidateIds.includes(previousSelection)) {
-            select.value = previousSelection;
-        }
+    if (picked) {
+        // Cleared immediately rather than after a successful draw: an import
+        // that failed should still ask, because the failure may be the reason
+        // to choose differently.
+        select.value = '';
+        return { calendar: picked, reason: null };
     }
+
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Pick a calendar';
+    select.appendChild(placeholder);
+
+    for (const candidate of candidates) {
+        const option = document.createElement('option');
+        option.value = candidate.entry.calendarId;
+        option.textContent = describeRange(candidate.range);
+        select.appendChild(option);
+    }
+
+    select.value = '';
     choice.classList.remove('hidden');
 
-    return candidates.find((c) => c.entry.calendarId === select.value) ?? candidates[0];
+    return { calendar: null, reason: 'pick' };
 }
 
 async function removePreviousImport(entry) {

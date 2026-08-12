@@ -130,9 +130,16 @@ async function runHolidays() {
 
     setStatus('Looking for a calendar...', true);
 
-    const calendar = await chooseCalendar();
+    // Named apart from the `reason` dayCellsOf returns further down; they answer
+    // different questions and share this scope.
+    const { calendar, reason: choiceReason } = await chooseCalendar();
     if (!calendar) {
-        setStatus('This board has no calendar to draw on.', false);
+        setStatus(
+            choiceReason === 'pick'
+                ? 'This board has more than one calendar. Pick one below, then press Draw Holidays again.'
+                : 'This board has no calendar to draw on.',
+            false
+        );
         return;
     }
 
@@ -213,6 +220,12 @@ async function runHolidays() {
  * Unlike the vacation import there is no data to derive a year from, so every
  * calendar on the board is a candidate and the year comes from whichever one is
  * picked.
+ *
+ * With more than one candidate the pick is required, every time - the same rule
+ * and the same reasoning as chooseCalendar in import.js, where the doc comment
+ * spells out why nothing may be drawn on an unconfirmed guess. Holidays repaint
+ * day cells rather than adding shapes, so a wrong guess is if anything harder to
+ * undo by hand than a wrong vacation import.
  */
 async function chooseCalendar() {
     const candidates = await findCalendars();
@@ -220,32 +233,39 @@ async function chooseCalendar() {
     const choice = document.getElementById('holidayCalendarChoice');
     const select = document.getElementById('targetHolidayCalendar');
 
-    if (candidates.length <= 1) {
+    if (candidates.length === 0) return { calendar: null, reason: 'none' };
+
+    if (candidates.length === 1) {
         choice.classList.add('hidden');
-        return candidates[0] ?? null;
+        return { calendar: candidates[0], reason: null };
     }
 
-    // Compare the candidate set by identity, not by length: a calendar deleted
-    // and another drawn in the same session can leave the same count behind.
-    const currentIds = Array.from(select.options, (option) => option.value);
-    const candidateIds = candidates.map((candidate) => candidate.entry.calendarId);
-    const sameCandidates = currentIds.length === candidateIds.length
-        && currentIds.every((id) => candidateIds.includes(id));
+    // Read before the rebuild below wipes it: this call is the click that
+    // follows the user's pick.
+    const picked = candidates.find((candidate) => candidate.entry.calendarId === select.value);
 
-    if (!sameCandidates) {
-        const previousSelection = select.value;
-        select.innerHTML = '';
-        for (const candidate of candidates) {
-            const option = document.createElement('option');
-            option.value = candidate.entry.calendarId;
-            option.textContent = describeRange(candidate.range);
-            select.appendChild(option);
-        }
-        if (candidateIds.includes(previousSelection)) select.value = previousSelection;
+    if (picked) {
+        select.value = '';
+        return { calendar: picked, reason: null };
     }
+
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Pick a calendar';
+    select.appendChild(placeholder);
+
+    for (const candidate of candidates) {
+        const option = document.createElement('option');
+        option.value = candidate.entry.calendarId;
+        option.textContent = describeRange(candidate.range);
+        select.appendChild(option);
+    }
+
+    select.value = '';
     choice.classList.remove('hidden');
 
-    return candidates.find((c) => c.entry.calendarId === select.value) ?? candidates[0];
+    return { calendar: null, reason: 'pick' };
 }
 
 function describeCellFailure(reason) {
