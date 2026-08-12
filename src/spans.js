@@ -1,7 +1,7 @@
-import { columnOf, nextWorkingDay, previousWorkingDay, totalWorkingDays } from './calendar.js';
+import { columnOf, nextWorkingDay, previousWorkingDay } from './calendar.js';
 
 /**
- * Places one date span on the grid of one drawn year.
+ * Places one date span on the grid of one drawn calendar.
  *
  * The span is columnOf(end) - columnOf(start) + 1, both from the same tested
  * function that positioned the day cells. There is no second day count that
@@ -10,10 +10,14 @@ import { columnOf, nextWorkingDay, previousWorkingDay, totalWorkingDays } from '
  * second time in SAPVac/drawshapes.js and produced the same off-by-one three
  * times.
  *
+ * The bounds are the drawn window's, which for a calendar over the whole year
+ * are the year's. A span outside them cannot be drawn at all; one reaching over
+ * an edge is drawn short and says so through `clipped`.
+ *
  * Returns either a placement or a single problem, never both.
  */
-export function placeSpan(year, start, end) {
-    const columns = totalWorkingDays(year);
+export function placeSpan({ year, firstColumn, columns }, start, end) {
+    const lastColumn = firstColumn + columns - 1;
 
     // A period reported as Sat-Sun means the working days inside it.
     const from = nextWorkingDay(start);
@@ -24,17 +28,17 @@ export function placeSpan(year, start, end) {
     const rawStart = columnOf(year, from);
     const rawEnd = columnOf(year, to);
 
-    if (rawEnd < 0 || rawStart > columns - 1) return { problem: 'outside-year' };
+    if (rawEnd < firstColumn || rawStart > lastColumn) return { problem: 'outside-range' };
 
-    const colStart = Math.max(0, rawStart);
-    const colEnd = Math.min(columns - 1, rawEnd);
+    const colStart = Math.max(firstColumn, rawStart);
+    const colEnd = Math.min(lastColumn, rawEnd);
 
     return {
         colStart,
         colSpan: colEnd - colStart + 1,
-        // A period running past New Year is legitimately shorter on this
-        // calendar, and callers that compare against a reported duration need
-        // to know not to complain about it.
+        // A period running past either edge of the drawn calendar is
+        // legitimately shorter on it, and callers that compare against a
+        // reported duration need to know not to complain about it.
         clipped: rawStart < colStart || rawEnd > colEnd,
     };
 }
