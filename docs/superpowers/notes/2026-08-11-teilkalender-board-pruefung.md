@@ -16,7 +16,7 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
    Januar–Dezember zeichnen.
    Erwartet: dieselbe Zahl an Shapes, dieselben Beschriftungen, dieselbe Zahl
    im Fortschritt wie vor der Änderung — aber nicht mehr dieselbe Breite an den
-   Rändern. `clipBlocks` (`src/calendar.js:221`) läuft für jedes Fenster, auch
+   Rändern. `clipBlocks` (`src/calendar.js:240`) läuft für jedes Fenster, auch
    das ganzjährige (`src/app.js:264`), und schneidet den Überhang ab, den ein
    Wochen- oder Iterationsblock über den 1. Januar oder den 31. Dezember hinaus
    hatte. Konkret für 2026: der erste Wochenblock schrumpft von `{ colStart:
@@ -31,18 +31,24 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
    gezeichneter Kalender: Urlaub importieren.
    Erwartet: Balken sitzen lagerichtig — der Eintrag hat kein `range`, wird
    also über `fullYearRange(entry.year)` als ganzes Jahr aufgelöst
-   (`src/anchors.js:195`, ebenso `src/anchors.js:44` beim Zeichnen). (Rein
+   (`src/anchors.js:199`, ebenso `src/anchors.js:44` beim Zeichnen). (Rein
    visuelle Prüfung des Ergebnisses, kein eigener String dafür; nur der
-   Fehlerfall meldet sich, wörtlich `Timeline Builder: measurement
-   implausible for calendar ${entry.calendarId}, skipping.`, siehe
-   `src/anchors.js:107` — der gehört zu diesem Schritt, aber nur wenn er
-   schiefgeht.)
+   Fehlerfall meldet sich. Weil dieser Eintrag kein `range` hat, kann nur die
+   Geometrieprüfung fehlschlagen, nicht die Bereichsauflösung — wörtlich
+   `Timeline Builder: measured geometry is implausible for calendar
+   ${entry.calendarId}, skipping.` (`src/anchors.js:111`, der Text „measured
+   geometry is implausible" stammt aus `src/anchors.js:212`) — der gehört zu
+   diesem Schritt, aber nur wenn er schiefgeht. Die andere mögliche Meldung,
+   `Timeline Builder: stored range does not resolve for calendar
+   ${entry.calendarId}, skipping.` (`src/anchors.js:201`), gehört zum
+   Fehlerfall eines Eintrags mit gespeichertem `range` und passt nicht zu
+   diesem Schritt.)
 
 3. **H2 landet im Blickfeld.** H2 drücken, zeichnen.
    Erwartet: der Kalender beginnt dort, wo der Viewport steht, nicht ein
    halbes Jahr rechts daneben. Das ist der verschobene Zeichenursprung aus
-   `src/app.js:281` (`settings.startX -= range.firstColumn * (settings.shapeWidth
-   + settings.padding);`). (Rein visuelle Prüfung, kein Konsolen- oder
+   `src/app.js:287` (`settings.startX -= range.firstColumn * pitchOf(settings);`).
+   (Rein visuelle Prüfung, kein Konsolen- oder
    Panel-String dafür im Code gefunden.)
 
 4. **Randblöcke tragen ihre Beschriftung.** Am H2-Kalender die erste
@@ -50,18 +56,18 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
    Erwartet: beide sind schmaler und heißen weiter „calendar week 27"
    beziehungsweise „Q3/2026". Der Wochen-Präfix „calendar week" ist der
    Vorgabewert des Feldes `weekPrefix` (`app.html:162`); das Label selbst
-   entsteht in `src/app.js:184` (`` `${weekPrefix} ${week.week}` ``). Das
-   Quartalslabel entsteht in `src/calendar.js:289`
+   entsteht in `src/app.js:185` (`` `${weekPrefix} ${week.week}` ``). Das
+   Quartalslabel entsteht in `src/calendar.js:308`
    (`` `Q${index + 1}/${year}` ``) — für die Vorgabe „Q1 beginnt im Januar"
    ist Juli das dritte Quartal, also „Q3/2026". Beide Zellen werden schmaler,
-   weil `clipBlocks` (`src/calendar.js:221`) nur `colStart`/`colSpan`
+   weil `clipBlocks` (`src/calendar.js:240`) nur `colStart`/`colSpan`
    kappt, die Labels aber unverändert durchreicht.
 
 5. **Iterationsnummern zählen weiter.** Iterationen einschalten, H2 zeichnen.
    Erwartet: die erste Iteration ist nicht 1, sondern die Nummer, die sie im
-   Jahr hat. Das folgt daraus, dass `iterationBlocks` (`src/calendar.js:175`)
+   Jahr hat. Das folgt daraus, dass `iterationBlocks` (`src/calendar.js:177`)
    immer für das ganze Jahr rechnet und erst danach auf das Fenster
-   geschnitten wird — siehe den Kommentar dazu in `src/calendar.js:217-219`.
+   geschnitten wird — siehe den Kommentar dazu in `src/calendar.js:236-238`.
    (Rein visuelle Prüfung der Zahl selbst, kein Konsolen- oder Panel-String
    dafür im Code gefunden.)
 
@@ -81,7 +87,7 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
    - Urlaubsbalken: `` `${where}: is not in the drawn range
      ${describeRange(range)}.` `` (`src/vacation.js:94`)
    `describeRange` liefert für einen Bereich, der nicht das ganze Jahr
-   abdeckt, `` `${year} (${von-Monat}-${bis-Monat})` `` (`src/calendar.js:369`);
+   abdeckt, `` `${year} (${von-Monat}-${bis-Monat})` `` (`src/calendar.js:382`);
    für ein H2-2026-Fenster (Juli bis Dezember) ergibt das genau
    `2026 (Jul-Dec)`.
 
@@ -97,7 +103,7 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
 8. **Fehlerfall im Panel.** „From" auf Oktober, „To" auf März stellen und
    zeichnen.
    Erwartet: Fehlermarkierung und Hinweistext, kein Shape auf dem Board.
-   `validateRange()` (`src/app.js:447`) prüft
+   `validateRange()` (`src/app.js:453`) prüft
    `parseInt(to.value) >= parseInt(from.value)`, setzt bei Verstoß die Klasse
    `error` auf die Feldgruppe und zeigt deren `.status-text`. Der Hinweistext
    ist wörtlich
