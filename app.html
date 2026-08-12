@@ -39,6 +39,52 @@
                                 <div class="status-text">Please enter a valid 4-digit year</div>
                             </div>
                     </fieldset>
+
+                    <fieldset class="section">
+                        <div class="h4 section-title">Range</div>
+                        <div class="grid">
+                            <div class="form-group form-group-small cs1 ce6">
+                                <label for="rangeFromMonth">From</label>
+                                <select class="select select-small" id="rangeFromMonth">
+                                    <option value="0" selected="selected">January</option>
+                                    <option value="1">February</option>
+                                    <option value="2">March</option>
+                                    <option value="3">April</option>
+                                    <option value="4">May</option>
+                                    <option value="5">June</option>
+                                    <option value="6">July</option>
+                                    <option value="7">August</option>
+                                    <option value="8">September</option>
+                                    <option value="9">October</option>
+                                    <option value="10">November</option>
+                                    <option value="11">December</option>
+                                </select>
+                                <div class="status-text">The last month cannot be before the first</div>
+                            </div>
+                            <div class="form-group form-group-small cs7 ce12">
+                                <label for="rangeToMonth">To</label>
+                                <select class="select select-small" id="rangeToMonth">
+                                    <option value="0">January</option>
+                                    <option value="1">February</option>
+                                    <option value="2">March</option>
+                                    <option value="3">April</option>
+                                    <option value="4">May</option>
+                                    <option value="5">June</option>
+                                    <option value="6">July</option>
+                                    <option value="7">August</option>
+                                    <option value="8">September</option>
+                                    <option value="9">October</option>
+                                    <option value="10">November</option>
+                                    <option value="11" selected="selected">December</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group form-group-small">
+                            <button type="button" id="rangeFullYear" class="button button-secondary button-small">Full year</button>
+                            <button type="button" id="rangeFirstHalf" class="button button-secondary button-small">H1</button>
+                            <button type="button" id="rangeSecondHalf" class="button button-secondary button-small">H2</button>
+                        </div>
+                    </fieldset>
                     <hr style="margin-top: calc(var(--space-xsmall) * 2);">
 
                     <fieldset class="section">

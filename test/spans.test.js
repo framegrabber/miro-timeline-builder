@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
 import { placeSpan, groupIntoRows } from '../src/spans.js';
-import { columnOf, totalWorkingDays } from '../src/calendar.js';
+import { columnOf, totalWorkingDays, fullYearRange, rangeFrom } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
 
@@ -13,7 +13,7 @@ const day = (iso) => dayjs(iso);
 
 test('a span inside the year is placed on the columns columnOf gives it', () => {
     // 2026-03-02 Mon to 2026-03-06 Fri is one full working week.
-    const placed = placeSpan(2026, day('2026-03-02'), day('2026-03-06'));
+    const placed = placeSpan(fullYearRange(2026), day('2026-03-02'), day('2026-03-06'));
 
     assert.equal(placed.colStart, columnOf(2026, day('2026-03-02')));
     assert.equal(placed.colSpan, 5);
@@ -22,29 +22,29 @@ test('a span inside the year is placed on the columns columnOf gives it', () => 
 
 test('a span starting or ending on a weekend is pulled onto working days', () => {
     // 2026-07-25 Sat to 2026-08-02 Sun really means Mon 07-27 to Fri 07-31.
-    const placed = placeSpan(2026, day('2026-07-25'), day('2026-08-02'));
+    const placed = placeSpan(fullYearRange(2026), day('2026-07-25'), day('2026-08-02'));
 
     assert.equal(placed.colStart, columnOf(2026, day('2026-07-27')));
     assert.equal(placed.colSpan, 5);
 });
 
 test('a span lying entirely on a weekend has no working day', () => {
-    assert.deepEqual(placeSpan(2026, day('2026-07-25'), day('2026-07-26')), {
+    assert.deepEqual(placeSpan(fullYearRange(2026), day('2026-07-25'), day('2026-07-26')), {
         problem: 'no-working-day',
     });
 });
 
 test('a span in another year is outside, not clipped to nothing', () => {
-    assert.deepEqual(placeSpan(2026, day('2027-03-01'), day('2027-03-05')), {
-        problem: 'outside-year',
+    assert.deepEqual(placeSpan(fullYearRange(2026), day('2027-03-01'), day('2027-03-05')), {
+        problem: 'outside-range',
     });
-    assert.deepEqual(placeSpan(2026, day('2025-03-03'), day('2025-03-07')), {
-        problem: 'outside-year',
+    assert.deepEqual(placeSpan(fullYearRange(2026), day('2025-03-03'), day('2025-03-07')), {
+        problem: 'outside-range',
     });
 });
 
 test('a span crossing into the next year is clipped to the last column', () => {
-    const placed = placeSpan(2026, day('2026-12-28'), day('2027-01-08'));
+    const placed = placeSpan(fullYearRange(2026), day('2026-12-28'), day('2027-01-08'));
 
     assert.equal(placed.colStart + placed.colSpan, totalWorkingDays(2026));
     assert.equal(placed.clipped, true);
@@ -52,7 +52,7 @@ test('a span crossing into the next year is clipped to the last column', () => {
 
 test('a span crossing into the year from the previous one is clipped to column 0', () => {
     // The Christmas school break: 2025-12-22 to 2026-01-10.
-    const placed = placeSpan(2026, day('2025-12-22'), day('2026-01-10'));
+    const placed = placeSpan(fullYearRange(2026), day('2025-12-22'), day('2026-01-10'));
 
     assert.equal(placed.colStart, 0);
     assert.equal(placed.clipped, true);
@@ -93,4 +93,53 @@ test('groupIntoRows asks colorOf for the key, not for the position', () => {
     });
 
     assert.equal(rows[0].color, '#Zoe');
+});
+
+// --- spans against a window rather than a whole year ---------------------------
+
+const SECOND_HALF = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+test('a span inside the window keeps its absolute columns', () => {
+    const placed = placeSpan(SECOND_HALF, day('2026-09-01'), day('2026-09-04'));
+
+    assert.deepEqual(placed, {
+        colStart: columnOf(2026, day('2026-09-01')),
+        colSpan: 4,
+        clipped: false,
+    });
+});
+
+test('a span reaching over the window start is cut and says so', () => {
+    // Ends on the first drawn day, starts three working days before the window.
+    const placed = placeSpan(SECOND_HALF, day('2026-06-26'), day(SECOND_HALF.from));
+
+    assert.equal(placed.colStart, SECOND_HALF.firstColumn);
+    assert.equal(placed.colSpan, 1);
+    assert.equal(placed.clipped, true);
+});
+
+test('a span entirely before the window is outside the range', () => {
+    assert.deepEqual(placeSpan(SECOND_HALF, day('2026-03-02'), day('2026-03-06')), {
+        problem: 'outside-range',
+    });
+});
+
+test('a span entirely after the window is outside the range too', () => {
+    const firstHalf = rangeFrom({ year: 2026, from: '2026-01-01', to: '2026-06-30' });
+
+    assert.deepEqual(placeSpan(firstHalf, day('2026-09-01'), day('2026-09-04')), {
+        problem: 'outside-range',
+    });
+});
+
+test('a span that swallows the whole window is clipped to it, not reported outside', () => {
+    // Neither endpoint of a July-December vacation falls inside a
+    // September-only window, but the two ranges still overlap - the case the
+    // overlap test's second half exists for.
+    const september = rangeFrom({ year: 2026, from: '2026-09-01', to: '2026-09-30' });
+    const placed = placeSpan(september, day('2026-07-01'), day('2026-12-31'));
+
+    assert.equal(placed.colStart, september.firstColumn);
+    assert.equal(placed.colSpan, september.columns);
+    assert.equal(placed.clipped, true);
 });

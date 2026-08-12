@@ -1,5 +1,5 @@
 import { board, run, isRateLimitError } from './board.js';
-import { gridFrom, totalWorkingDays } from './calendar.js';
+import { gridFrom, rangeFrom, fullYearRange } from './calendar.js';
 
 const APP_DATA_KEY = 'calendars';
 const METADATA_KEY = 'timelineBuilder';
@@ -10,12 +10,14 @@ const METADATA_KEY = 'timelineBuilder';
  * Three cells get a metadata tag; their ids plus the year go into AppData.
  * Nothing derived is stored - the grid is measured back off the board in
  * findCalendars(), which is why moving or scaling the calendar cannot break it.
+ * The drawn range is stored as the two dates it came from, for the same reason:
+ * firstColumn and columns are derived, and are recomputed on every resolve.
  *
  * AppData is only an index. If it is lost, everything could be rebuilt from a
  * metadata scan; the other way round it could not. That is why the tags sit on
  * the shapes and not only in AppData.
  */
-export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = true }) {
+export async function tagCalendar({ drawnRows, rows, year, range, indicatorEnabled = true }) {
     const dayRowIndex = rows.findIndex((row) => row.position === 'drawDays');
     const dayShapes = drawnRows[dayRowIndex];
 
@@ -33,16 +35,25 @@ export async function tagCalendar({ drawnRows, rows, year, indicatorEnabled = tr
         await run(() => shape.setMetadata(METADATA_KEY, { role, calendarId, year }));
     }
 
+    // Stored as the input it came from, not as columns: firstColumn and columns
+    // are derived from the year, and two stored numbers that can drift from it
+    // are a bug waiting for someone to edit one of them. A missing range means
+    // the whole year, which is why every calendar drawn before this existed
+    // keeps working - but a fresh one always writes the field, so the shape of
+    // an entry is uniform.
+    const drawn = range ?? fullYearRange(year);
+
     const calendars = await readCalendars();
     calendars.push({
         calendarId,
         year,
+        range: { from: drawn.from, to: drawn.to },
         anchors: {
             firstDay: shapes.firstDay.id,
             lastDay: shapes.lastDay.id,
             topLeft: shapes.topLeft.id,
         },
-        indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null, placedY: null },
+        indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null, placedY: null, placedAnchorY: null },
         vacationItemIds: [],
     });
     await writeCalendars(calendars);
@@ -79,7 +90,7 @@ export async function findCalendars() {
     const resolved = [];
 
     for (const entry of stored) {
-        const { calendar, reason } = await measure(entry);
+        const { calendar, reason, detail } = await measure(entry);
 
         if (reason === 'missing') {
             console.warn(`Timeline Builder: anchors missing for calendar ${entry.calendarId}, dropping entry.`);
@@ -93,7 +104,11 @@ export async function findCalendars() {
         }
 
         if (reason === 'implausible') {
-            console.warn(`Timeline Builder: measurement implausible for calendar ${entry.calendarId}, skipping.`);
+            // The reason value stays 'implausible' either way - callers only
+            // branch on that - but the message says which of the two checks
+            // failed, so a hand-edited AppData blob (bad range) is tellable
+            // from a dragged-out day cell (bad geometry) without a debugger.
+            console.warn(`Timeline Builder: ${detail} for calendar ${entry.calendarId}, skipping.`);
             alive.push(entry);
             continue;
         }
@@ -173,18 +188,35 @@ async function measure(entry) {
         return { calendar: null, reason: 'missing' };
     }
 
+    // An entry without a range is a calendar drawn before windows existed: the
+    // whole year, by definition. A stored range that no longer resolves (an
+    // impossible from/to, a hand-edited AppData blob) is treated like an
+    // implausible measurement rather than a missing anchor - the entry stays,
+    // only this pass is skipped, so nothing is thrown away over data that a
+    // redraw can fix.
+    const range = entry.range
+        ? rangeFrom({ year: entry.year, ...entry.range })
+        : fullYearRange(entry.year);
+    if (!range) {
+        return { calendar: null, reason: 'implausible', detail: 'stored range does not resolve' };
+    }
+
     const grid = gridFrom({
         firstCenterX: firstDay.x,
         lastCenterX: lastDay.x,
         cellWidth: firstDay.width,
-        columns: totalWorkingDays(entry.year),
+        columns: range.columns,
+        firstColumn: range.firstColumn,
     });
-    if (!grid) return { calendar: null, reason: 'implausible' };
+    if (!grid) {
+        return { calendar: null, reason: 'implausible', detail: 'measured geometry is implausible' };
+    }
 
     return {
         calendar: {
             entry,
             year: entry.year,
+            range,
             grid,
             rowHeight: firstDay.height,
             top: topLeft.y - topLeft.height / 2,

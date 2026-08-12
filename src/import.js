@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { findCalendars, updateCalendar } from './anchors.js';
-import { xOfColumn, widthOfColumns } from './calendar.js';
+import { xOfColumn, widthOfColumns, describeRange } from './calendar.js';
 import { parseVacations, planVacations, yearsIn } from './vacation.js';
 import { updateIndicators } from './today.js';
 
@@ -32,7 +32,7 @@ async function runImport() {
         return;
     }
 
-    const { rows, problems: planProblems } = planVacations(entries, calendar.year);
+    const { rows, problems: planProblems } = planVacations(entries, calendar.range);
     const problems = [...parseProblems, ...planProblems];
 
     if (rows.length === 0) {
@@ -118,7 +118,7 @@ async function chooseCalendar(entries) {
         for (const candidate of candidates) {
             const option = document.createElement('option');
             option.value = candidate.entry.calendarId;
-            option.textContent = String(candidate.year);
+            option.textContent = describeRange(candidate.range);
             select.appendChild(option);
         }
         // Keep the user's choice if it is still among the candidates; otherwise

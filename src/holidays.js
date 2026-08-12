@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 
 import { placeSpan, groupIntoRows } from './spans.js';
-import { columnOf, isWorkingDay } from './calendar.js';
+import { columnOf, containsColumn, isWorkingDay, describeRange } from './calendar.js';
 import { stringToColor } from './colors.js';
 
 /**
@@ -169,7 +169,7 @@ function subtitleFor(entry, names) {
     return joinGerman(labels);
 }
 
-export function planStickies(entries, year, { selected, names }) {
+export function planStickies(entries, range, { selected, names }) {
     const stickies = [];
     const problems = [];
 
@@ -187,13 +187,24 @@ export function planStickies(entries, year, { selected, names }) {
         // against the API widening a range - but columnOf would happily return
         // a column for a date in another year, and that column belongs to a
         // different day.
-        if (entry.date.year() !== year) {
-            problems.push(`${entry.name}: is not in ${year}.`);
+        if (entry.date.year() !== range.year) {
+            problems.push(`${entry.name}: is not in ${range.year}.`);
+            continue;
+        }
+
+        const column = columnOf(range.year, entry.date);
+
+        // Inside the year but outside the drawn window: there is no day cell to
+        // mark and no column to hang a sticky over. Named rather than dropped,
+        // for the same reason an out-of-range vacation entry is named - a wrong
+        // date and a date outside the section must not look the same.
+        if (!containsColumn(range, column)) {
+            problems.push(`${entry.name}: is not in the drawn range ${describeRange(range)}.`);
             continue;
         }
 
         stickies.push({
-            column: columnOf(year, entry.date),
+            column,
             name: entry.name,
             subtitle: subtitleFor(entry, names),
             nationwide: entry.nationwide,
@@ -204,7 +215,7 @@ export function planStickies(entries, year, { selected, names }) {
     return { stickies, problems };
 }
 
-export function planBands(entries, year, { selected, names }) {
+export function planBands(entries, range, { selected, names }) {
     const problems = [];
     const placed = [];
 
@@ -222,14 +233,14 @@ export function planBands(entries, year, { selected, names }) {
 
             const state = names.get(code)?.name ?? code;
             const where = `${entry.name} ${state}`;
-            const span = placeSpan(year, entry.start, entry.end);
+            const span = placeSpan(range, entry.start, entry.end);
 
             if (span.problem === 'no-working-day') {
                 problems.push(`${where}: contains no working day.`);
                 continue;
             }
-            if (span.problem === 'outside-year') {
-                problems.push(`${where}: is not in ${year}.`);
+            if (span.problem === 'outside-range') {
+                problems.push(`${where}: is not in the drawn range ${describeRange(range)}.`);
                 continue;
             }
 

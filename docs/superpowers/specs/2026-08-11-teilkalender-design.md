@@ -25,8 +25,12 @@ angefangen bei der Stelle, die das Raster vom Board zurückmisst.
 - Alles, was auf einem gezeichneten Kalender aufsetzt — Urlaub, Feiertage,
   Schulferien, TODAY-Indikator — arbeitet auf einem Teilkalender genauso wie auf
   einem ganzen Jahr.
-- Ein Kalender über das ganze Jahr sieht danach bitgleich aus wie vorher, und
-  kein bereits gezeichneter Kalender wird ungültig.
+- Ein Kalender über das ganze Jahr zeigt danach dieselbe Zahl an Shapes,
+  dieselben Beschriftungen und dieselbe Fortschrittszahl wie vorher — aber
+  nicht mehr bitgleiche Koordinaten: seine Rand-Wochen- und Iterationsblöcke
+  werden genauso zugeschnitten wie die eines Teilkalenders (siehe „Randblöcke"
+  unten), sind also schmaler als vor dieser Änderung. Kein bereits gezeichneter
+  Kalender wird dadurch ungültig.
 - Es gibt danach weiterhin genau eine Spaltenrechnung.
 
 ## Nicht-Ziele
@@ -59,7 +63,7 @@ angefangen bei der Stelle, die das Raster vom Board zurückmisst.
 | Spaltenraum | Bleibt an den 1. Januar verankert; der Abschnitt ist eine Teilmenge |
 | Bereichsumfang | Innerhalb eines Kalenderjahres, Monatsgrenzen |
 | UI | Zwei Monats-Selects (Standard Januar–Dezember) plus Schnellknöpfe H1/H2 |
-| Randblöcke | Werden zugeschnitten und behalten ihre Beschriftung |
+| Randblöcke | Werden zugeschnitten und behalten ihre Beschriftung — für jedes Fenster, auch das ganze Jahr: ein frisch gezeichneter Jahreskalender hat also flush abschließende Rand-Wochen- und Iterationsblöcke statt der bisher überhängenden |
 | Gespeichert wird | `{ from, to }` als ISO-Daten — die Eingabe, nicht das Abgeleitete |
 | Inhalt außerhalb | Wird verworfen, mit Notiz pro Eintrag, die den Bereich nennt |
 | Migration | Keine. Fehlender Bereich heißt „ganzes Jahr" |
@@ -330,8 +334,14 @@ eine einzige geänderte Zusicherung. Eine Signatur, die eine Jahreszahl *oder*
 einen Bereich akzeptiert, wäre ein zweiter Modus in fünf Funktionen und wurde
 verworfen.
 
-Ein Kalender über das ganze Jahr muss bitgleiche Blöcke und bitgleiche
-Koordinaten ergeben — das ist die eigentliche Abnahme dieses Specs.
+Ein Kalender über das ganze Jahr muss dieselbe Zahl an Blöcken mit denselben
+Beschriftungen ergeben — das ist die eigentliche Abnahme dieses Specs. Nicht
+mehr bitgleich sind die Koordinaten der Randblöcke, weil `clipBlocks` (`src/
+app.js:264`) für jedes Fenster läuft, auch das ganzjährige: 2026 schrumpft der
+erste Wochenblock von `{ colStart: -3, colSpan: 5 }` auf `{ colStart: 0,
+colSpan: 2 }`, der letzte von `colSpan 5` auf `4`; bei den Iterationen (10 Tage)
+schrumpft der letzte Block von `252/10` auf `252/9`. Das ist die Kehrseite der
+getroffenen Entscheidung „Randblöcke" oben, keine Regression.
 
 **Nicht testbar und darum manuell:** dass ein Teilkalender auf dem Board
 tatsächlich dort landet, wo der Nutzer hinsieht (der verschobene Ursprung), und

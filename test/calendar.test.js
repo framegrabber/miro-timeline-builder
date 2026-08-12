@@ -15,9 +15,15 @@ import {
     quarterBlocks,
     xOfColumn,
     widthOfColumns,
+    pitchOf,
+    containsColumn,
     nextWorkingDay,
     previousWorkingDay,
     gridFrom,
+    clipBlocks,
+    rangeFrom,
+    fullYearRange,
+    describeRange,
 } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
@@ -235,6 +241,21 @@ test('a block of N columns is as wide as N single-day blocks', () => {
     assert.equal(widthOfColumns(GEOMETRY, 5), 5 * single + 4 * GEOMETRY.padding);
 });
 
+test('pitchOf is the centre-to-centre distance xOfColumn already uses', () => {
+    assert.equal(pitchOf(GEOMETRY), GEOMETRY.shapeWidth + GEOMETRY.padding);
+    assert.equal(xOfColumn(GEOMETRY, 4) - xOfColumn(GEOMETRY, 1), 3 * pitchOf(GEOMETRY));
+});
+
+test('containsColumn is true for every column of the window and false just outside it', () => {
+    const range = { firstColumn: 10, columns: 5 }; // columns 10..14
+
+    assert.equal(containsColumn(range, 10), true);
+    assert.equal(containsColumn(range, 12), true);
+    assert.equal(containsColumn(range, 14), true);
+    assert.equal(containsColumn(range, 9), false);
+    assert.equal(containsColumn(range, 15), false);
+});
+
 test('every row lands on a real day column across all years', () => {
     for (const year of YEARS) {
         const dayXs = new Set(dayBlocks(year).map((d) => xOfColumn(GEOMETRY, d.colStart)));
@@ -396,4 +417,227 @@ test('the time of day does not shift a column before the year either', () => {
         columnOf(2026, dayjs('2025-12-30'))
     );
     assert.equal(columnOf(2026, dayjs('2025-12-31T23:59:59')), -1, 'the last working day before the year');
+});
+
+// --- clipping a full year down to a window ------------------------------------
+
+const WINDOW = { firstColumn: 10, columns: 5 }; // columns 10..14
+
+test('a block fully inside the window is untouched', () => {
+    const blocks = [{ label: 'inside', colStart: 11, colSpan: 3, extra: 'kept' }];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'inside', colStart: 11, colSpan: 3, extra: 'kept' },
+    ]);
+});
+
+test('a block fully outside the window is dropped', () => {
+    const blocks = [
+        { label: 'left', colStart: 0, colSpan: 5 },
+        { label: 'right', colStart: 15, colSpan: 5 },
+    ];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), []);
+});
+
+test('a block straddling the left edge is cut on the left', () => {
+    const blocks = [{ label: 'straddle', colStart: 8, colSpan: 5 }]; // 8..12
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'straddle', colStart: 10, colSpan: 3 }, // 10..12
+    ]);
+});
+
+test('a block straddling the right edge is cut on the right', () => {
+    const blocks = [{ label: 'straddle', colStart: 13, colSpan: 6 }]; // 13..18
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'straddle', colStart: 13, colSpan: 2 }, // 13..14
+    ]);
+});
+
+test('a block covering the whole window becomes the window', () => {
+    const blocks = [{ label: 'over', colStart: 0, colSpan: 100 }];
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'over', colStart: 10, colSpan: 5 },
+    ]);
+});
+
+test('a block ending exactly on the first column survives with one column', () => {
+    const blocks = [{ label: 'touch', colStart: 6, colSpan: 5 }]; // 6..10
+    assert.deepEqual(clipBlocks(blocks, WINDOW), [
+        { label: 'touch', colStart: 10, colSpan: 1 },
+    ]);
+});
+
+test('the day row is filtered, since every day block is one column wide', () => {
+    const clipped = clipBlocks(dayBlocks(2026), WINDOW);
+
+    assert.equal(clipped.length, 5);
+    assert.equal(clipped[0].colStart, 10);
+    assert.equal(clipped[4].colStart, 14);
+    // The weekday travels with the block: the day row's colours depend on it.
+    assert.equal(clipped[0].weekday, dayBlocks(2026)[10].weekday);
+});
+
+test('a clipped month row covers every column of the window exactly once', () => {
+    const window = { firstColumn: 130, columns: 60 };
+    const clipped = clipBlocks(monthBlocks(2026), window);
+    const covered = clipped.reduce((sum, block) => sum + block.colSpan, 0);
+
+    assert.equal(covered, window.columns);
+    assert.equal(clipped[0].colStart, window.firstColumn);
+    const last = clipped[clipped.length - 1];
+    assert.equal(last.colStart + last.colSpan - 1, window.firstColumn + window.columns - 1);
+});
+
+test('a window spanning the whole year changes nothing', () => {
+    const whole = { firstColumn: 0, columns: totalWorkingDays(2026) };
+
+    assert.deepEqual(clipBlocks(monthBlocks(2026), whole), monthBlocks(2026));
+    assert.deepEqual(clipBlocks(dayBlocks(2026), whole), dayBlocks(2026));
+});
+
+// --- the drawn range ----------------------------------------------------------
+
+test('January to December is the whole year', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-01-01', to: '2026-12-31' });
+
+    assert.equal(range.year, 2026);
+    assert.equal(range.firstColumn, 0);
+    assert.equal(range.columns, totalWorkingDays(2026));
+});
+
+test('fullYearRange is that range', () => {
+    assert.deepEqual(fullYearRange(2026), rangeFrom({
+        year: 2026,
+        from: '2026-01-01',
+        to: '2026-12-31',
+    }));
+});
+
+test('the second half of 2026 counted independently', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+    // Walk the year by hand rather than reusing the implementation's maths.
+    let before = 0;
+    let inside = 0;
+    for (let d = dayjs('2026-01-01'); d.year() === 2026; d = d.add(1, 'day')) {
+        if (d.isoWeekday() > 5) continue;
+        if (d.isBefore(dayjs('2026-07-01'), 'day')) before++;
+        else inside++;
+    }
+
+    assert.equal(range.firstColumn, before);
+    assert.equal(range.columns, inside);
+    assert.equal(range.firstColumn + range.columns, totalWorkingDays(2026));
+});
+
+test('a range starting on a weekend moves forward to the Monday', () => {
+    // 2026-08-01 is a Saturday, 2026-08-03 the Monday after it.
+    const range = rangeFrom({ year: 2026, from: '2026-08-01', to: '2026-08-31' });
+
+    assert.equal(range.from, '2026-08-03');
+    assert.equal(range.firstColumn, columnOf(2026, dayjs('2026-08-03')));
+});
+
+test('a range ending on a weekend moves back to the Friday', () => {
+    // 2026-05-31 is a Sunday, 2026-05-29 the Friday before it.
+    const range = rangeFrom({ year: 2026, from: '2026-05-01', to: '2026-05-31' });
+
+    assert.equal(range.to, '2026-05-29');
+});
+
+test('rangeFrom is idempotent, so a stored range resolves to itself', () => {
+    const once = rangeFrom({ year: 2026, from: '2026-08-01', to: '2026-10-31' });
+    const twice = rangeFrom({ year: 2026, from: once.from, to: once.to });
+
+    assert.deepEqual(twice, once);
+});
+
+test('dates outside the year are clamped to it', () => {
+    const range = rangeFrom({ year: 2026, from: '2025-06-01', to: '2027-06-30' });
+
+    assert.deepEqual(range, fullYearRange(2026));
+});
+
+test('a range that cannot be a grid is refused', () => {
+    assert.equal(rangeFrom({ year: 2026, from: '2026-09-01', to: '2026-03-31' }), null, 'to before from');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-03-02', to: '2026-03-02' }), null, 'a single column has no pitch');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-07-25', to: '2026-07-26' }), null, 'a weekend holds no working day');
+    assert.equal(rangeFrom({ year: 2026, from: 'not a date', to: '2026-12-31' }), null, 'unreadable from');
+    assert.equal(rangeFrom({ year: 2026, from: '2026-01-01', to: '' }), null, 'missing to');
+});
+
+test('describeRange names a whole year by its year alone', () => {
+    assert.equal(describeRange(fullYearRange(2026)), '2026');
+});
+
+test('describeRange names a window by its months', () => {
+    assert.equal(
+        describeRange(rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' })),
+        '2026 (Jul-Dec)'
+    );
+    assert.equal(
+        describeRange(rangeFrom({ year: 2026, from: '2026-04-01', to: '2026-06-30' })),
+        '2026 (Apr-Jun)'
+    );
+});
+
+// --- measuring a window rather than a whole year -------------------------------
+
+test('a measured window puts its first drawn column where it was measured', () => {
+    const range = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+    const cellWidth = 100;
+    const pitch = cellWidth + 2;
+
+    // What the board would report for a window drawn with its first cell's
+    // left edge at x = 5000.
+    const firstCenterX = 5000 + cellWidth / 2;
+    const lastCenterX = firstCenterX + (range.columns - 1) * pitch;
+
+    const grid = gridFrom({
+        firstCenterX,
+        lastCenterX,
+        cellWidth,
+        columns: range.columns,
+        firstColumn: range.firstColumn,
+    });
+
+    assert.equal(grid.shapeWidth, cellWidth);
+    assert.ok(Math.abs(grid.padding - 2) < 1e-6);
+    // Asking for the absolute column of the first drawn cell must give back the
+    // left edge it was measured at.
+    assert.ok(Math.abs(xOfColumn(grid, range.firstColumn) - 5000) < 1e-6);
+    // And the last drawn column lands on the last measured centre.
+    const lastLeft = xOfColumn(grid, range.firstColumn + range.columns - 1);
+    assert.ok(Math.abs(lastLeft + cellWidth / 2 - lastCenterX) < 1e-6);
+});
+
+test('a window and a whole year agree about a column they share', () => {
+    const cellWidth = 100;
+    const pitch = cellWidth + 2;
+    const whole = fullYearRange(2026);
+    const window = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+    // Both drawn so that absolute column 0 sits at x = 0.
+    const wholeGrid = gridFrom({
+        firstCenterX: cellWidth / 2,
+        lastCenterX: cellWidth / 2 + (whole.columns - 1) * pitch,
+        cellWidth,
+        columns: whole.columns,
+        firstColumn: whole.firstColumn,
+    });
+    const windowGrid = gridFrom({
+        firstCenterX: window.firstColumn * pitch + cellWidth / 2,
+        lastCenterX: (window.firstColumn + window.columns - 1) * pitch + cellWidth / 2,
+        cellWidth,
+        columns: window.columns,
+        firstColumn: window.firstColumn,
+    });
+
+    const column = window.firstColumn + 20;
+    assert.ok(Math.abs(xOfColumn(wholeGrid, column) - xOfColumn(windowGrid, column)) < 1e-6);
+});
+
+test('an absent firstColumn still means column zero', () => {
+    const sane = { firstCenterX: 50, lastCenterX: 50 + 260 * 102, cellWidth: 100, columns: 261 };
+
+    assert.deepEqual(gridFrom(sane), gridFrom({ ...sane, firstColumn: 0 }));
 });

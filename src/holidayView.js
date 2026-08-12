@@ -11,6 +11,7 @@ import {
     planStickies,
     planBands,
 } from './holidays.js';
+import { describeRange } from './calendar.js';
 import { drawHolidays, removeHolidays, recordHolidays } from './holidayDraw.js';
 import { updateIndicators } from './today.js';
 
@@ -154,8 +155,8 @@ async function runHolidays() {
 
     const publicHolidays = parsePublicHolidays(raw.publicHolidays);
     const schoolHolidays = parseSchoolHolidays(raw.schoolHolidays);
-    const planned = planStickies(publicHolidays.entries, calendar.year, { selected, names });
-    const banded = planBands(schoolHolidays.entries, calendar.year, { selected, names });
+    const planned = planStickies(publicHolidays.entries, calendar.range, { selected, names });
+    const banded = planBands(schoolHolidays.entries, calendar.range, { selected, names });
 
     const problems = [
         ...publicHolidays.problems,
@@ -237,7 +238,7 @@ async function chooseCalendar() {
         for (const candidate of candidates) {
             const option = document.createElement('option');
             option.value = candidate.entry.calendarId;
-            option.textContent = String(candidate.year);
+            option.textContent = describeRange(candidate.range);
             select.appendChild(option);
         }
         if (candidateIds.includes(previousSelection)) select.value = previousSelection;

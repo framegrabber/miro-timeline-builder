@@ -15,7 +15,14 @@ import {
     connectorState,
     endpointItemId,
 } from '../src/indicatorGeometry.js';
-import { totalWorkingDays, firstWorkingDayOf, lastWorkingDayOf } from '../src/calendar.js';
+import {
+    totalWorkingDays,
+    firstWorkingDayOf,
+    lastWorkingDayOf,
+    fullYearRange,
+    rangeFrom,
+    columnOf,
+} from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
 
@@ -53,8 +60,8 @@ function expectedColumn(year, date) {
 test('the first and last working day own the first and last column', () => {
     // 2026-01-01 is a Thursday and 2026-12-31 is a Thursday, so both are
     // working days and the year is not clipped at either end.
-    assert.equal(columnForToday(2026, dayjs('2026-01-01')), 0);
-    assert.equal(columnForToday(2026, dayjs('2026-12-31')), totalWorkingDays(2026) - 1);
+    assert.equal(columnForToday(fullYearRange(2026), dayjs('2026-01-01')), 0);
+    assert.equal(columnForToday(fullYearRange(2026), dayjs('2026-12-31')), totalWorkingDays(2026) - 1);
 });
 
 test('a weekend points at the coming Monday', () => {
@@ -69,15 +76,15 @@ test('a weekend points at the coming Monday', () => {
     const friday = dayjs('2026-07-24');
     const expectedFridayColumn = expectedColumn(2026, friday);
 
-    assert.equal(columnForToday(2026, saturday), expectedMondayColumn, 'Saturday');
-    assert.equal(columnForToday(2026, sunday), expectedMondayColumn, 'Sunday');
-    assert.equal(columnForToday(2026, monday), expectedMondayColumn, 'Monday');
-    assert.equal(columnForToday(2026, friday), expectedFridayColumn, 'Friday keeps its own column');
+    assert.equal(columnForToday(fullYearRange(2026), saturday), expectedMondayColumn, 'Saturday');
+    assert.equal(columnForToday(fullYearRange(2026), sunday), expectedMondayColumn, 'Sunday');
+    assert.equal(columnForToday(fullYearRange(2026), monday), expectedMondayColumn, 'Monday');
+    assert.equal(columnForToday(fullYearRange(2026), friday), expectedFridayColumn, 'Friday keeps its own column');
 });
 
 test('there is no column outside the drawn year', () => {
-    assert.equal(columnForToday(2026, dayjs('2025-12-31')), null, 'before');
-    assert.equal(columnForToday(2026, dayjs('2027-01-01')), null, 'after');
+    assert.equal(columnForToday(fullYearRange(2026), dayjs('2025-12-31')), null, 'before');
+    assert.equal(columnForToday(fullYearRange(2026), dayjs('2027-01-01')), null, 'after');
 });
 
 test('a leap day has a column of its own', () => {
@@ -85,8 +92,8 @@ test('a leap day has a column of its own', () => {
     const leapDay = dayjs('2024-02-29');
     const expectedLeapDayColumn = expectedColumn(2024, leapDay);
 
-    assert.equal(columnForToday(2024, leapDay), expectedLeapDayColumn);
-    assert.equal(columnForToday(2024, dayjs('2024-03-01')), expectedLeapDayColumn + 1,
+    assert.equal(columnForToday(fullYearRange(2024), leapDay), expectedLeapDayColumn);
+    assert.equal(columnForToday(fullYearRange(2024), dayjs('2024-03-01')), expectedLeapDayColumn + 1,
         'the Friday after it is the next column');
 });
 
@@ -94,8 +101,8 @@ test('a weekend inside the year after the last working day returns null', () => 
     // 2022-12-31 is a Saturday; last working day is 2022-12-30 (Friday).
     // The coming Monday (2023-01-02) is outside the year, so the answer is null.
     const expectedFridayColumn = expectedColumn(2022, dayjs('2022-12-30'));
-    assert.equal(columnForToday(2022, dayjs('2022-12-30')), expectedFridayColumn);
-    assert.equal(columnForToday(2022, dayjs('2022-12-31')), null, 'Saturday after year end');
+    assert.equal(columnForToday(fullYearRange(2022), dayjs('2022-12-30')), expectedFridayColumn);
+    assert.equal(columnForToday(fullYearRange(2022), dayjs('2022-12-31')), null, 'Saturday after year end');
 });
 
 test('a Sunday inside the year after the last working day returns null', () => {
@@ -103,8 +110,8 @@ test('a Sunday inside the year after the last working day returns null', () => {
     // last working day is 2023-12-29 (Friday).
     // The coming Monday (2024-01-01) is outside the year, so the answer is null.
     const expectedFridayColumn = expectedColumn(2023, dayjs('2023-12-29'));
-    assert.equal(columnForToday(2023, dayjs('2023-12-29')), expectedFridayColumn);
-    assert.equal(columnForToday(2023, dayjs('2023-12-31')), null, 'Sunday after year end');
+    assert.equal(columnForToday(fullYearRange(2023), dayjs('2023-12-29')), expectedFridayColumn);
+    assert.equal(columnForToday(fullYearRange(2023), dayjs('2023-12-31')), null, 'Sunday after year end');
 });
 
 test('a Sunday trailing 2028 returns null while Friday returns the last column', () => {
@@ -112,8 +119,8 @@ test('a Sunday trailing 2028 returns null while Friday returns the last column',
     // last working day is 2028-12-29 (Friday).
     // The coming Monday (2029-01-01) is outside the year, so the answer is null.
     const expectedFridayColumn = expectedColumn(2028, dayjs('2028-12-29'));
-    assert.equal(columnForToday(2028, dayjs('2028-12-29')), expectedFridayColumn);
-    assert.equal(columnForToday(2028, dayjs('2028-12-31')), null, 'Sunday after year end');
+    assert.equal(columnForToday(fullYearRange(2028), dayjs('2028-12-29')), expectedFridayColumn);
+    assert.equal(columnForToday(fullYearRange(2028), dayjs('2028-12-31')), null, 'Sunday after year end');
 });
 
 // The bug this pins down was live on a real board: the updater calls
@@ -121,10 +128,10 @@ test('a Sunday trailing 2028 returns null while Friday returns the last column',
 // nothing caught that the underlying comparison was to the instant rather than
 // to the day. From one second past midnight the indicator sat on tomorrow.
 test('the indicator does not move with the clock', () => {
-    const midnight = columnForToday(2026, dayjs('2026-07-29'));
+    const midnight = columnForToday(fullYearRange(2026), dayjs('2026-07-29'));
 
     for (const time of ['00:00:01', '09:30:00', '14:32:11', '23:59:59']) {
-        assert.equal(columnForToday(2026, dayjs(`2026-07-29T${time}`)), midnight, `at ${time}`);
+        assert.equal(columnForToday(fullYearRange(2026), dayjs(`2026-07-29T${time}`)), midnight, `at ${time}`);
     }
 });
 
@@ -397,4 +404,32 @@ test('endpointItemId reads both shapes and refuses to guess at anything else', (
     assert.equal(endpointItemId({ item: null }), null);
     assert.equal(endpointItemId({}), null);
     assert.equal(endpointItemId(undefined), null);
+});
+
+// --- today against a partial calendar -----------------------------------------
+
+const SECOND_HALF = rangeFrom({ year: 2026, from: '2026-07-01', to: '2026-12-31' });
+
+test('a date inside the window keeps its absolute column', () => {
+    const day = dayjs('2026-09-15');
+
+    assert.equal(columnForToday(SECOND_HALF, day), columnOf(2026, day));
+});
+
+test('a date before the window has no column on this calendar', () => {
+    assert.equal(columnForToday(SECOND_HALF, dayjs('2026-03-02')), null);
+});
+
+test('the window edges are inside it', () => {
+    assert.equal(columnForToday(SECOND_HALF, dayjs(SECOND_HALF.from)), SECOND_HALF.firstColumn);
+    assert.equal(
+        columnForToday(SECOND_HALF, dayjs(SECOND_HALF.to)),
+        SECOND_HALF.firstColumn + SECOND_HALF.columns - 1
+    );
+});
+
+test('a date after the window has no column either', () => {
+    const firstHalf = rangeFrom({ year: 2026, from: '2026-01-01', to: '2026-06-30' });
+
+    assert.equal(columnForToday(firstHalf, dayjs('2026-08-03')), null);
 });

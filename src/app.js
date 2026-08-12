@@ -8,6 +8,9 @@ import {
     quarterBlocks,
     xOfColumn,
     widthOfColumns,
+    rangeFrom,
+    clipBlocks,
+    pitchOf,
 } from './calendar.js';
 import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
@@ -75,6 +78,7 @@ document
 
     const yearInput = document.getElementById('year');
     if (!validateYear(yearInput)) return;
+    if (!validateRange()) return;
 
     await drawCalendar();
 });
@@ -88,6 +92,22 @@ const settingsMap = {
 Object.entries(settingsMap).forEach(([triggerId, targetId]) => {
     document.getElementById(triggerId).addEventListener('change', (event) => {
         document.getElementById(targetId).classList.toggle('hidden', !event.target.checked);
+    });
+});
+
+// Quick sets, not a second source of truth: they only move the two selects, so
+// there is exactly one place the range is read from.
+const rangePresets = {
+    rangeFullYear: [0, 11],
+    rangeFirstHalf: [0, 5],
+    rangeSecondHalf: [6, 11],
+};
+
+Object.entries(rangePresets).forEach(([buttonId, [fromMonth, toMonth]]) => {
+    document.getElementById(buttonId).addEventListener('click', () => {
+        document.getElementById('rangeFromMonth').value = String(fromMonth);
+        document.getElementById('rangeToMonth').value = String(toMonth);
+        validateRange();
     });
 });
   
@@ -208,10 +228,31 @@ function dayRow(year) {
     };
 }
 
+// The panel offers months, not dates: a section of a year that starts mid-month
+// is not a case anyone has, and month bounds cover halves and quarters. dayjs
+// resolves the end of the month, so no table of month lengths is needed and a
+// leap February is right by construction.
+function rangeFromSettings(settings) {
+    const year = settings.year;
+    const fromMonth = settings.rangeFromMonth ?? 0;
+    const toMonth = settings.rangeToMonth ?? 11;
+
+    return rangeFrom({
+        year,
+        from: dayjs(`${year}-01-01`).month(fromMonth).startOf('month').format('YYYY-MM-DD'),
+        to: dayjs(`${year}-01-01`).month(toMonth).endOf('month').format('YYYY-MM-DD'),
+    });
+}
+
 // Coarsest rows first. The board receives the calls in this order, so the
-// shape of the year is visible within a second while the 261 day boxes - three
+// shape of the year is visible within a second while the day boxes - three
 // quarters of all shapes - fill in behind it.
-function planRows(year, settings) {
+//
+// Every row is built for the whole year and then cut to the drawn window. The
+// builders stay window-blind on purpose: five builders clipping for themselves
+// would be five copies of the same clamping arithmetic, and iteration numbers
+// would restart at 1 instead of continuing from the start of the year.
+function planRows(year, settings, range) {
     const rows = [];
 
     if (settings.drawQuarters) rows.push(quarterRow(year, settings));
@@ -220,14 +261,32 @@ function planRows(year, settings) {
     if (settings.drawWeeks) rows.push(weekRow(year, settings));
     rows.push(dayRow(year)); // Always draw days
 
-    return rows;
+    return rows.map((row) => ({ ...row, blocks: clipBlocks(row.blocks, range) }));
 }
 
 async function drawCalendar() {
     const settings = await getSettings();
     const year = settings.year;
 
-    const rows = planRows(year, settings);
+    // Not reachable from this panel today: validateRange already guarantees
+    // rangeFromMonth <= rangeToMonth, and every whole month has at least 18
+    // working days, so rangeFromSettings cannot return null here. The guard
+    // stays anyway - it is cheap, and rangeFromSettings is not written to
+    // assume a caller that always validates first.
+    const range = rangeFromSettings(settings);
+    if (!range) {
+        setBusy(false, 'That range has no working days to draw. Pick a wider one.');
+        return;
+    }
+
+    // xOfColumn works in absolute columns - column 0 is the first working day
+    // of the year, drawn or not - so a window would otherwise start as far
+    // right of the viewport as its first column is into the year. Pulling the
+    // origin back by exactly that much puts the first *drawn* column where the
+    // user is looking.
+    settings.startX -= range.firstColumn * pitchOf(settings);
+
+    const rows = planRows(year, settings, range);
     const total = rows.reduce((count, row) => count + row.blocks.length, 0);
 
     let drawn = 0;
@@ -249,7 +308,7 @@ async function drawCalendar() {
         // tagging succeeds; its findability later is important but not a precondition
         // for showing the user what they asked for now.
         try {
-            await tagCalendar({ drawnRows, rows, year, indicatorEnabled: settings.drawTodayIndicator });
+            await tagCalendar({ drawnRows, rows, year, range, indicatorEnabled: settings.drawTodayIndicator });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
         }
@@ -384,6 +443,29 @@ function validateYear(yearInput) {
     if (!isValid) {
         yearInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+
+    return isValid;
+}
+
+// The two month selects are the only pair in the panel that can contradict each
+// other, so this is the one cross-field check. Same mechanics as validateYear:
+// mark the group, show its status text, refuse to draw.
+function validateRange() {
+    const from = document.getElementById('rangeFromMonth');
+    const to = document.getElementById('rangeToMonth');
+    if (!from || !to) return true;
+
+    const group = from.closest('.form-group');
+    const toGroup = to.closest('.form-group');
+    const isValid = parseInt(to.value) >= parseInt(from.value);
+
+    // Both selects contradict each other, so both are marked - but there is
+    // only one status text, kept on the "From" group where it has always been.
+    group.classList.toggle('error', !isValid);
+    toGroup.classList.toggle('error', !isValid);
+    group.querySelector('.status-text').style.display = isValid ? 'none' : 'block';
+
+    if (!isValid) group.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     return isValid;
 }

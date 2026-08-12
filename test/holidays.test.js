@@ -19,7 +19,7 @@ import {
     STICKY_FACTOR,
     STICKY_GAP_FACTOR,
 } from '../src/holidays.js';
-import { columnOf } from '../src/calendar.js';
+import { columnOf, fullYearRange } from '../src/calendar.js';
 
 dayjs.extend(isoWeek);
 
@@ -81,7 +81,7 @@ test('appliesTo counts a child subdivision as its parent being hit', () => {
 
 test('only holidays that apply somewhere in the selection are drawn', () => {
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies } = planStickies(entries, 2026, { selected: BY_AND_HE, names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: BY_AND_HE, names: NAMES });
     const names = stickies.map((sticky) => sticky.name);
 
     assert.ok(names.includes('Heilige Drei Könige'), 'applies in Bavaria');
@@ -94,14 +94,14 @@ test('the subtitle names every state the day applies in, not just the selected o
     // Otherwise a selection of "Bavaria only" would forever read "BY" and the
     // line would carry no information at all.
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies } = planStickies(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: ['DE-BY'], names: NAMES });
 
     assert.equal(stickyNamed(stickies, 'Fronleichnam').subtitle, 'BW, BY, HE, NRW, RP und SL');
 });
 
 test('a nationwide day has no subtitle', () => {
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies } = planStickies(entries, 2026, { selected: BY_AND_HE, names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: BY_AND_HE, names: NAMES });
 
     assert.equal(stickyNamed(stickies, 'Neujahr').subtitle, '');
     assert.equal(stickyNamed(stickies, 'Neujahr').nationwide, true);
@@ -117,7 +117,7 @@ test('a local day names the place instead of the state', () => {
             subdivisions: [{ code: 'DE-BY-AU', shortName: 'BY-AU' }],
         },
     ]);
-    const { stickies } = planStickies(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: ['DE-BY'], names: NAMES });
 
     assert.equal(stickies.length, 1);
     assert.equal(stickies[0].subtitle, 'Augsburg');
@@ -128,7 +128,7 @@ test('a holiday on a weekend has no column and is reported', () => {
     // In 2026 Bavaria loses five to weekends: All Saints (Sun), Assumption
     // (Sat), Peace Festival (Sat), German Unity Day (Sat) and Boxing Day (Sat).
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies, problems } = planStickies(entries, 2026, {
+    const { stickies, problems } = planStickies(entries, fullYearRange(2026), {
         selected: BY_AND_HE,
         names: NAMES,
     });
@@ -140,7 +140,7 @@ test('a holiday on a weekend has no column and is reported', () => {
 
 test('a sticky sits on the column columnOf gives its date', () => {
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies } = planStickies(entries, 2026, { selected: BY_AND_HE, names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: BY_AND_HE, names: NAMES });
 
     assert.equal(
         stickyNamed(stickies, 'Karfreitag').column,
@@ -150,7 +150,7 @@ test('a sticky sits on the column columnOf gives its date', () => {
 
 test('stickies come out left to right', () => {
     const { entries } = parsePublicHolidays(PUBLIC);
-    const { stickies } = planStickies(entries, 2026, { selected: BY_AND_HE, names: NAMES });
+    const { stickies } = planStickies(entries, fullYearRange(2026), { selected: BY_AND_HE, names: NAMES });
     const columns = stickies.map((sticky) => sticky.column);
 
     assert.deepEqual(columns, [...columns].sort((a, b) => a - b));
@@ -158,7 +158,7 @@ test('stickies come out left to right', () => {
 
 test('school holidays make one row per state, alphabetical', () => {
     const { entries } = parseSchoolHolidays(SCHOOL);
-    const { rows } = planBands(entries, 2026, { selected: BY_AND_HE, names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: BY_AND_HE, names: NAMES });
 
     assert.deepEqual(rows.map((row) => row.key), ['Bayern', 'Hessen']);
     assert.deepEqual(rows.map((row) => row.index), [0, 1]);
@@ -167,7 +167,7 @@ test('school holidays make one row per state, alphabetical', () => {
 
 test('the band label carries the real dates, not the clipped ones', () => {
     const { entries } = parseSchoolHolidays(SCHOOL);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-HE'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-HE'], names: NAMES });
     const christmas = rows[0].blocks[0];
 
     // Hesse's Christmas break runs 2025-12-22 to 2026-01-10: it starts in the
@@ -191,7 +191,7 @@ test('a break lying entirely outside the year is dropped and named', () => {
             subdivisions: [{ code: 'DE-BY', shortName: 'BY' }],
         },
     ]);
-    const { rows, problems } = planBands(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const { rows, problems } = planBands(entries, fullYearRange(2026), { selected: ['DE-BY'], names: NAMES });
 
     assert.deepEqual(rows, []);
     assert.equal(problems.length, 1);
@@ -200,7 +200,7 @@ test('a break lying entirely outside the year is dropped and named', () => {
 
 test('only the selected states get a band', () => {
     const { entries } = parseSchoolHolidays(SCHOOL);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-HE'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-HE'], names: NAMES });
 
     assert.deepEqual(rows.map((row) => row.key), ['Hessen']);
 });
@@ -434,7 +434,7 @@ test('a one-day break says its date once, not twice', () => {
         name: [{ text: 'Variabler Ferientag' }],
         subdivisions: [{ code: 'DE-BB', shortName: 'BB' }],
     }]);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-BB'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-BB'], names: NAMES });
 
     assert.equal(rows[0].blocks[0].detail, 'BB 15.05.');
 });
@@ -445,7 +445,7 @@ test('the year is dropped for a break inside one year', () => {
         name: [{ text: 'Pfingstferien' }],
         subdivisions: [{ code: 'DE-BY', shortName: 'BY' }],
     }]);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-BY'], names: NAMES });
 
     // The calendar is a single year, so the year on a band repeats what the
     // drawing already is.
@@ -456,7 +456,7 @@ test('the year survives on a break that crosses New Year', () => {
     // 22.12. - 10.01. would not say which end is which. These are the
     // Christmas breaks, eleven to twenty-one days, so the band has the room.
     const { entries } = parseSchoolHolidays(SCHOOL);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-HE'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-HE'], names: NAMES });
 
     assert.equal(rows[0].blocks[0].detail, 'HE 22.12.25 - 10.01.26');
 });
@@ -470,7 +470,7 @@ test('the separator keeps its spaces so no unbreakable token forms', () => {
         name: [{ text: 'Pfingstferien' }],
         subdivisions: [{ code: 'DE-BY', shortName: 'BY' }],
     }]);
-    const { rows } = planBands(entries, 2026, { selected: ['DE-BY'], names: NAMES });
+    const { rows } = planBands(entries, fullYearRange(2026), { selected: ['DE-BY'], names: NAMES });
     const longestWord = Math.max(...rows[0].blocks[0].detail.split(' ').map((w) => w.length));
 
     assert.ok(longestWord <= 6, `longest word is "${longestWord}" characters`);
