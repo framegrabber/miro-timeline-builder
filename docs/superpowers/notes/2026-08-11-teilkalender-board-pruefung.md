@@ -3,12 +3,17 @@
 **Datum:** 2026-08-11
 **Gehört zu:** [Teilkalender: Design](../specs/2026-08-11-teilkalender-design.md), [Teilkalender: Plan](../plans/2026-08-11-teilkalender.md)
 
-**Status (2026-08-11): offen, braucht ein echtes Board.** Die Checkliste unten
-ist noch nicht durchgearbeitet. Board-I/O — das Schreiben des Bereichs, das
-Zurückmessen des Rasters vom Board, das Adressieren der Tageszellen nach
-Spalte, der verschobene Zeichenursprung und das Panel — hat kein Test-Harness;
-kein Agent kann diese Liste ausführen. Die Bestätigung trägt der
-Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
+**Status (2026-08-18): durchgearbeitet.** Schritt 6 hat einen echten Fehler
+gefunden — die Namensbeschriftung der Ferienzeilen hing an `grid.startX` und
+damit dort, wo der Januar liegen würde; behoben in `c1688fd`, und genau
+deshalb ist dieser Teilschritt der einzige, der nach dem Deploy noch einmal
+angesehen werden muss. Alle übrigen Schritte verhielten sich wie erwartet.
+
+Board-I/O — das Schreiben des Bereichs, das Zurückmessen des Rasters vom Board,
+das Adressieren der Tageszellen nach Spalte, der verschobene Zeichenursprung und
+das Panel — hat kein Test-Harness; kein Agent kann diese Liste ausführen. Diese
+Liste bleibt deshalb stehen: sie ist der Nachweis für jede weitere Änderung an
+derselben Geometrie.
 
 ## Checkliste für die Prüfung am Board
 
@@ -126,14 +131,14 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
 
 | Schritt | Ergebnis | Datum | Wer |
 |---|---|---|---|
-| 1. Ganzes Jahr: gleiche Form, geschnittene Ränder | | | |
-| 2. Bestehender Kalender bleibt adressierbar | | | |
-| 3. H2 landet im Blickfeld | | | |
-| 4. Randblöcke tragen ihre Beschriftung | | | |
-| 5. Iterationsnummern zählen weiter | | | |
-| 6. Urlaub und Feiertage sitzen richtig | | | |
-| 7. Der Indikator folgt dem Fenster | | | |
-| 8. Fehlerfall im Panel | | | |
+| 1. Ganzes Jahr: gleiche Form, geschnittene Ränder | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 2. Bestehender Kalender bleibt adressierbar | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 3. H2 landet im Blickfeld | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 4. Randblöcke tragen ihre Beschriftung | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 5. Iterationsnummern zählen weiter | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 6. Urlaub und Feiertage sitzen richtig | Bänder, Stickies und Balken richtig; Zeilenbeschriftung stand beim Januar — behoben in `c1688fd`, nach dem Deploy erneut ansehen | 2026-08-18 | Felix Rothballer |
+| 7. Der Indikator folgt dem Fenster | wie erwartet | 2026-08-18 | Felix Rothballer |
+| 8. Fehlerfall im Panel | wie erwartet | 2026-08-18 | Felix Rothballer |
 
 **Quellen:**
 [Board](https://developers.miro.com/docs/websdk-reference-board)
