@@ -115,7 +115,7 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
     // with no handle: a repainted cell has no id, only its column.
     const carriedColumns = previous.markedColumns ?? [];
 
-    const { grid, rowHeight, top } = calendar;
+    const { grid, range, rowHeight, top } = calendar;
     const created = [];
     const anchors = [];
     const markedColumns = [];
@@ -164,10 +164,16 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
             // The state's full name, once, at the start of its row. Every band
             // repeats only the short code, because on a year-wide calendar
             // this label is off screen almost all of the time.
+            //
+            // Anchored on the first *drawn* column, not on grid.startX: since
+            // the grid started describing column 0 - the year's first working
+            // day, drawn or not - startX is where January would be, which on a
+            // calendar drawn for part of the year is far off to the left of
+            // anything on the board.
             created.push(await run(() => board.createShape({
                 shape: 'rectangle',
                 content: `<p><b>${escapeHtml(row.key)}</b></p>`,
-                x: grid.startX - grid.padding - ROW_LABEL_COLUMNS * rowHeight / 2,
+                x: xOfColumn(grid, range.firstColumn) - grid.padding - ROW_LABEL_COLUMNS * rowHeight / 2,
                 y,
                 width: ROW_LABEL_COLUMNS * rowHeight,
                 height: rowHeight,

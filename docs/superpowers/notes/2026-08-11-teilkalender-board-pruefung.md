@@ -73,8 +73,15 @@ Repository-Owner ein, sobald ein Durchlauf gemacht wurde.
 
 6. **Urlaub und Feiertage sitzen richtig.** Auf dem H2-Kalender Feiertage für
    ein Bundesland zeichnen und einen SAP-Export importieren.
-   Erwartet: Bänder, Stickies und Balken an den richtigen Tagen; Einträge aus
-   dem ersten Halbjahr stehen in der Problemliste mit dem Text
+   Erwartet: Bänder, Stickies und Balken an den richtigen Tagen. Dazu die
+   Namensbeschriftung jeder Ferienzeile (der ausgeschriebene Landesname, links
+   vor dem ersten Band): sie muss links **am gezeichneten Fenster** kleben, nicht
+   dort, wo der Januar liegen würde. Sie hing genau dort, solange sie an
+   `grid.startX` hing (`src/holidayDraw.js:176`), denn das ist seit dieser
+   Änderung die x-Koordinate von Spalte 0 — bei einem Teilkalender also weit
+   links außerhalb von allem, was auf dem Board steht.
+   Weiter erwartet: Einträge aus dem ersten Halbjahr stehen in der Problemliste
+   mit dem Text
    ```
    is not in the drawn range 2026 (Jul-Dec).
    ```
