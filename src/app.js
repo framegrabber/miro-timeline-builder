@@ -448,24 +448,30 @@ function validateYear(yearInput) {
 }
 
 // The two month selects are the only pair in the panel that can contradict each
-// other, so this is the one cross-field check. Same mechanics as validateYear:
-// mark the group, show its status text, refuse to draw.
+// other, so this is the one cross-field check.
+//
+// Unlike validateYear this does not mark the fields themselves. Mirotone styles
+// an errored field with `.error .input`, and these are `.select` - marking them
+// changed nothing on screen, so the message is the whole signal.
+//
+// The message sits on its own full-width row below both selects, not inside the
+// "From" group where it started. In the grid it added height to one column only,
+// so the "To" select sat lower than the "From" select until something hid the
+// text again - which is why pressing a preset appeared to fix the alignment. Its
+// own row cannot push a neighbour around, whether it is shown or hidden. The row
+// starts hidden in the markup, because mirotone's `.status-text` has no display
+// rule of its own and would otherwise be visible before this ever runs.
 function validateRange() {
     const from = document.getElementById('rangeFromMonth');
     const to = document.getElementById('rangeToMonth');
-    if (!from || !to) return true;
+    const error = document.getElementById('rangeError');
+    if (!from || !to || !error) return true;
 
-    const group = from.closest('.form-group');
-    const toGroup = to.closest('.form-group');
     const isValid = parseInt(to.value) >= parseInt(from.value);
 
-    // Both selects contradict each other, so both are marked - but there is
-    // only one status text, kept on the "From" group where it has always been.
-    group.classList.toggle('error', !isValid);
-    toGroup.classList.toggle('error', !isValid);
-    group.querySelector('.status-text').style.display = isValid ? 'none' : 'block';
+    error.style.display = isValid ? 'none' : 'block';
 
-    if (!isValid) group.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!isValid) error.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     return isValid;
 }

@@ -36,7 +36,7 @@
                                        minlength="4"
                                        id="year"
                                        required/>
-                                <div class="status-text">Please enter a valid 4-digit year</div>
+                                <div class="status-text" style="display: none;">Please enter a valid 4-digit year</div>
                             </div>
                     </fieldset>
 
@@ -59,7 +59,6 @@
                                     <option value="10">November</option>
                                     <option value="11">December</option>
                                 </select>
-                                <div class="status-text">The last month cannot be before the first</div>
                             </div>
                             <div class="form-group form-group-small cs7 ce12">
                                 <label for="rangeToMonth">To</label>
@@ -78,6 +77,9 @@
                                     <option value="11" selected="selected">December</option>
                                 </select>
                             </div>
+                        </div>
+                        <div class="form-group form-group-small error" id="rangeError" style="display: none;">
+                            <div class="status-text">The last month cannot be before the first</div>
                         </div>
                         <div class="form-group form-group-small">
                             <button type="button" id="rangeFullYear" class="button button-secondary button-small">Full year</button>
