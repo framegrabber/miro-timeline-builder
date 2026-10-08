@@ -15,9 +15,7 @@ import {
 import dayjs from 'dayjs';
 import { board, run, takeStats, isRateLimitError } from './board.js';
 import { tagCalendar } from './anchors.js';
-import { updateIndicators, DIAMETER_FACTOR } from './today.js';
-import { columnForToday, indicatorY, anchorY, indicatorEdges } from './indicatorGeometry.js';
-import { createCalendarFrame, addToFrame, fitFrame } from './frame.js';
+import { updateIndicators } from './today.js';
 import { initImportView } from './import.js';
 import { initHolidayView } from './holidayView.js';
 import { dayColor } from './colors.js';
@@ -305,85 +303,12 @@ async function drawCalendar() {
         );
         const shapes = drawnRows.flat();
 
-        // Taken right after the shapes exist, so the round trips describe the
-        // drawing alone - grouping, framing and bookkeeping are reported (or
-        // dropped) separately below.
-        const drawing = takeStats();
-
-        // Grouping comes first now, because the frame takes the calendar as one
-        // Group: a single frame.add for the whole calendar instead of one per
-        // shape. board.group returns the Group, which is the only handle on it we
-        // get without reading it back. A failing group no longer ends the flow on
-        // the spot: tagging and the TODAY indicator used to run before grouping,
-        // so a grouping failure still left a findable calendar behind. To keep
-        // exactly that, the error is held, everything after it still runs, and
-        // it is rethrown at the end so the panel reports it as before.
-        let group = null;
-        let groupingMs = 0;
-        let groupingError = null;
-
-        if (shapes.length > 1) {
-            setBusy(true, 'Grouping the calendar...');
-
-            const startedAt = performance.now();
-            try {
-                group = await run(() => board.group({ items: shapes }));
-            } catch (error) {
-                groupingError = error;
-            }
-            groupingMs = performance.now() - startedAt;
-
-            takeStats(); // Reported separately, so keep it out of the round trips.
-        }
-
-        // The frame is a convenience, like the group: if any frame step fails,
-        // the calendar is still on the board and everything below runs exactly
-        // as it did before frames existed. frameId stays null after a failed
-        // create, which is what tagCalendar stores for "no frame of ours" - so a
-        // later import never tries to manage a frame that was never made.
-        //
-        // The frame is created around the planned content rather than the drawn
-        // shapes: the geometry is already known here, and reading every shape
-        // back would cost a call per shape for numbers we computed ourselves.
-        // The planned TODAY indicator is included so the first createIndicator
-        // finds itself inside the frame and does not have to grow it right away.
-        const today = dayjs();
-        let frameId = null;
-        let framingMs = 0;
-
-        setBusy(true, 'Framing the calendar...');
-        const framingStartedAt = performance.now();
-
-        try {
-            const frame = await createCalendarFrame({
-                edgesList: plannedEdges(settings, rows, range, today),
-                range,
-                rowHeight: settings.shapeHeight,
-            });
-            frameId = frame.id;
-        } catch (error) {
-            console.warn('Timeline Builder: could not create a frame for the calendar, drawing it without one.', error);
-        }
-
-        if (frameId) {
-            try {
-                // Without a group, each shape goes in on its own - slower, but a
-                // calendar half in and half out of its frame would be worse.
-                await addToFrame(frameId, group ? { group } : { items: shapes });
-            } catch (error) {
-                console.warn('Timeline Builder: could not move the calendar into its frame.', error);
-            }
-        }
-
-        framingMs += performance.now() - framingStartedAt;
-
         // Tag the calendar for later lookup, but do not let a bookkeeping failure
-        // cost the draw. The calendar exists and is visible whether or not the
+        // cost the grouping. The calendar exists and is visible whether or not the
         // tagging succeeds; its findability later is important but not a precondition
-        // for showing the user what they asked for now. Tagging runs after the
-        // frame because the entry records the frame's id.
+        // for showing the user what they asked for now.
         try {
-            await tagCalendar({ drawnRows, rows, year, range, indicatorEnabled: settings.drawTodayIndicator, frameId });
+            await tagCalendar({ drawnRows, rows, year, range, indicatorEnabled: settings.drawTodayIndicator });
         } catch (error) {
             console.error('Calendar could not be tagged for later lookup:', error);
         }
@@ -393,32 +318,27 @@ async function drawCalendar() {
         // show no TODAY indicator until the next tick, or a reload. Bringing every
         // calendar's indicator up to date now is the same work the next tick would
         // do; do not let a failure here cost the draw, for the same reason tagging
-        // above is isolated. It runs after tagging, so the new calendar - and its
-        // frameId - is among the calendars it finds; createIndicator then puts the
-        // indicator into the frame itself.
+        // above is isolated.
         try {
-            await updateIndicators(today, { raise: true });
+            await updateIndicators(dayjs(), { raise: true });
         } catch (error) {
             console.error('Could not update the TODAY indicator:', error);
         }
 
-        // Exactly one fit at the end: the frame was cut to planned content, and
-        // this trims it to what actually ended up inside, indicator included.
-        if (frameId) {
-            const fitStartedAt = performance.now();
-            try {
-                await fitFrame(frameId, settings.shapeHeight);
-            } catch (error) {
-                console.warn('Timeline Builder: could not fit the frame to the calendar.', error);
-            }
-            framingMs += performance.now() - fitStartedAt;
+        const drawing = takeStats();
+        let groupingMs = 0;
+
+        if (shapes.length > 1) {
+            setBusy(true, 'Grouping the calendar...');
+
+            const startedAt = performance.now();
+            await run(() => board.group({ items: shapes }));
+            groupingMs = performance.now() - startedAt;
+
+            takeStats(); // Reported separately, so keep it out of the round trips.
         }
 
-        takeStats(); // Tagging, indicator and framing calls are not drawing round trips.
-
-        if (groupingError) throw groupingError;
-
-        logDrawStats(year, drawing, groupingMs, { framed: frameId !== null, framingMs });
+        logDrawStats(year, drawing, groupingMs);
 
         await board.ui.closePanel();
     } catch (error) {
@@ -428,7 +348,7 @@ async function drawCalendar() {
     }
 }
 
-function logDrawStats(year, stats, groupingMs, { framed = false, framingMs = 0 } = {}) {
+function logDrawStats(year, stats, groupingMs) {
     if (!stats) return;
 
     const ms = (value) => `${Math.round(value)} ms`;
@@ -441,7 +361,6 @@ function logDrawStats(year, stats, groupingMs, { framed = false, framingMs = 0 }
         'Parallel calls':       { Value: stats.concurrency },
         'Drawing':              { Value: seconds(stats.wallClockMs) },
         'Grouping':             { Value: seconds(groupingMs) },
-        'Framing':              { Value: framed ? seconds(framingMs) : 'no frame' },
         'Throughput':           { Value: `${stats.callsPerSecond.toFixed(1)} shapes/s` },
         'Round trip, fastest':  { Value: ms(stats.fastestMs) },
         'Round trip, median':   { Value: ms(stats.medianMs) },
@@ -467,39 +386,6 @@ function logDrawStats(year, stats, groupingMs, { framed = false, framingMs = 0 }
     );
 
     console.groupEnd();
-}
-
-// Where the calendar and its TODAY indicator will sit, in board coordinates,
-// computed from the same geometry the rows were drawn from. The rows all span
-// the drawn window, so one box from the first drawn column to the last and
-// from the top row to the bottom row covers every shape.
-function plannedEdges(settings, rows, range, today) {
-    const { shapeWidth, shapeHeight, padding } = settings;
-    const lastColumn = range.firstColumn + range.columns - 1;
-    const top = calculateYPosition(settings, rows[0].position);
-    const bottom = calculateYPosition(settings, rows[rows.length - 1].position) + shapeHeight;
-
-    const edges = [{
-        left: xOfColumn(settings, range.firstColumn),
-        top,
-        right: xOfColumn(settings, lastColumn) + shapeWidth,
-        bottom,
-    }];
-
-    // Same inputs createIndicator will see on a calendar that has no holidays
-    // and no vacation yet: reservedRows and contentRows are both zero.
-    const column = columnForToday(range, today);
-    if (settings.drawTodayIndicator && column !== null) {
-        const diameter = shapeHeight * DIAMETER_FACTOR;
-        edges.push(indicatorEdges({
-            x: xOfColumn(settings, column) + shapeWidth / 2,
-            circleY: indicatorY({ top, rowHeight: shapeHeight, diameter, reservedRows: 0 }),
-            anchorY: anchorY({ bottom, rowHeight: shapeHeight, padding, contentRows: 0 }),
-            diameter,
-        }));
-    }
-
-    return edges;
 }
 
 function describeDrawFailure(error) {

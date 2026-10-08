@@ -92,31 +92,6 @@ export function legacyAnchorY({ bottom, rowHeight }) {
 }
 
 /**
- * Edges covering the indicator from the circle's top to the anchor's bottom.
- *
- * This is what the frame has to make room for before the indicator is drawn
- * into it or moved inside it: frame.add only accepts items that already lie
- * inside the frame, and moving a child past the frame's edge is not something
- * the SDK documents. The connector needs no edges of its own - it runs between
- * the two shapes, so the box around both covers it.
- *
- * The width is the wider of the two shapes. Today that is always the circle,
- * but taking the maximum keeps the box honest should the anchor ever grow.
- * Callers planning a frame before the indicator exists may pass any column of
- * the calendar as `x`: the indicator always sits within the calendar's
- * columns, so only the vertical extent can push the frame outwards.
- */
-export function indicatorEdges({ x, circleY, anchorY, diameter, anchorSize = 8 }) {
-    const halfWidth = Math.max(diameter, anchorSize) / 2;
-    return {
-        left: x - halfWidth,
-        top: circleY - diameter / 2,
-        right: x + halfWidth,
-        bottom: anchorY + anchorSize / 2,
-    };
-}
-
-/**
  * Whether the updater's periodic pass has anything to do.
  *
  * The indicator moves once a day, but the tick fires every ten minutes in the

@@ -67,26 +67,6 @@ bars relative to each other instead of to calendar dates, which brought the same
 off-by-one back three times. There is now one column calculation, in
 [`src/calendar.js`](./src/calendar.js), and it is covered by tests.
 
-### The calendar lives in a frame
-
-A newly drawn calendar is placed in a white frame titled with its range and year
-(`2026`, or `2026 (Jul-Dec)` for part of a year). Holidays, school-holiday bands,
-vacation bars and the TODAY indicator are added to the same frame, so dragging
-the frame moves everything together.
-
-The size of the frame follows its content: it grows before anything is drawn
-or moved past its edge, and is cut back to what is inside at the end of every
-draw, import and holiday run. If you resize the frame by hand, the next run
-overwrites that size.
-
-Calendars drawn before frames existed do not get one. If you put such a
-calendar into a frame of your own, the app still finds its days correctly but
-never resizes that frame.
-
-What the Miro SDK does not document about frames, and what to check on a real
-board, is in
-[`docs/superpowers/notes/2026-10-08-frame-unverified.md`](./docs/superpowers/notes/2026-10-08-frame-unverified.md).
-
 ### Folder structure
 
 <!-- The following tree structure is just an example -->

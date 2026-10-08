@@ -1,8 +1,6 @@
 import { board, run, isRateLimitError } from './board.js';
 import { xOfColumn } from './calendar.js';
 import { updateCalendar, findCalendars, readCalendars } from './anchors.js';
-import { growFrame, fitFrame, addToFrame, parentOrigin } from './frame.js';
-import { edgesOf, toBoard, toParent } from './frameGeometry.js';
 import {
     columnForToday,
     indicatorY,
@@ -23,14 +21,8 @@ const LABEL_SIZE = 24;
 
 // The one number to change for the circle's size. Diameter is a multiple of
 // the calendar's measured rowHeight rather than a fixed pixel value, so it
-// keeps scaling with whatever the calendar was drawn at. Exported because the
-// panel has to plan the frame around an indicator that does not exist yet,
-// and a second copy of this factor would drift.
-export const DIAMETER_FACTOR = 1.6;
-
-// The invisible anchor's side length. indicatorEdges in indicatorGeometry.js
-// defaults to the same 8, which is how the panel plans a frame around it.
-const ANCHOR_SIZE = 8;
+// keeps scaling with whatever the calendar was drawn at.
+const DIAMETER_FACTOR = 1.6;
 
 // Anything closer than this is the same position as far as anyone can see, and
 // writing it again would only burn credits.
@@ -91,7 +83,7 @@ export async function syncIndicator(calendar, today, { raise = false } = {}) {
     const wanted = entry.indicator.enabled && column !== null;
 
     if (!wanted) {
-        if (entry.indicator.circleId) await removeIndicator(entry, calendar);
+        if (entry.indicator.circleId) await removeIndicator(entry);
         return;
     }
 
@@ -135,7 +127,7 @@ export async function syncIndicator(calendar, today, { raise = false } = {}) {
         return;
     }
 
-    const { wrote, alive } = await moveIndicator(calendar, {
+    const { wrote, alive } = await moveIndicator(entry, {
         x,
         circleY: y,
         legacyCircleY: legacyY,
@@ -247,8 +239,8 @@ async function createIndicator(calendar, x, anchorTarget) {
             shape: 'rectangle',
             x,
             y: anchorTarget,
-            width: ANCHOR_SIZE,
-            height: ANCHOR_SIZE,
+            width: 8,
+            height: 8,
             style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
         }));
         created.push(anchor);
@@ -277,26 +269,10 @@ async function createIndicator(calendar, x, anchorTarget) {
         // it works, but it works undocumented. The guard stays, because an
         // indicator that silently stopped tracking today would be worse than an
         // ungrouped one, and the group is only a convenience for the mouse.
-        let group = null;
         try {
-            group = await run(() => board.group({ items: [circle, anchor, connector] }));
+            await run(() => board.group({ items: [circle, anchor, connector] }));
         } catch (error) {
             console.warn(`Timeline Builder: could not group the TODAY indicator for calendar ${entry.calendarId}`, error);
-        }
-
-        // Into the calendar's frame, if it has one of ours. Last and guarded for
-        // the same reason as grouping: the indicator is complete without it. The
-        // frame grows first because frame.add refuses anything not already
-        // inside it. The two shapes were just created, so their x/y are still
-        // board coordinates. The connector only ever travels inside the group;
-        // on its own it has no position for a frame to hold.
-        if (calendar.frameId) {
-            try {
-                await growFrame(calendar.frameId, [edgesOf(circle), edgesOf(anchor)], rowHeight);
-                await addToFrame(calendar.frameId, group ? { group } : { items: [circle, anchor] });
-            } catch (error) {
-                console.warn(`Timeline Builder: could not put the TODAY indicator into the frame of calendar ${entry.calendarId}`, error);
-            }
         }
     } catch (error) {
         // Undo whatever this attempt managed to create, oldest first. Each
@@ -345,60 +321,70 @@ async function createIndicator(calendar, x, anchorTarget) {
  * long and the circle on yesterday, which reads as "it has not updated yet"
  * and heals on the next pass just the same.
  *
- * Positions are read and written through each item's own parent frame: the
- * two shapes usually sit in the calendar's frame, where the SDK reports x/y
- * relative to the frame's top-left, but either one may have been dragged out
- * of it by hand. Both ends are read before anything is written, so the frame
- * can be grown to the final positions first (a child synced past the frame's
- * edge is undocumented), and a missing circle is found before the anchor has
- * been moved for nothing.
- *
  * Returns `{ wrote, alive }`. `wrote` says whether anything was written, so the
  * caller knows when it is worth spending a read on checking the connector.
- * `alive` says whether the three ids still mean anything afterwards. It is
- * false both when the ids were given up (removeIndicator cleared them) and
- * when a rate limit or an unplaceable parent left their real state unknown -
- * in all of these the rest of the pass has to keep its hands off them.
+ * `alive` says whether the three ids still mean anything afterwards, which is a
+ * different question: this function can write the anchor and then discover that
+ * the circle is gone, so "something was written" must not be read as "the
+ * indicator is still there". `alive` is false both when the ids were given up
+ * (removeIndicator cleared them) and when a rate limit left their real state
+ * unknown - in both cases the rest of the pass has to keep its hands off them.
  */
-async function moveIndicator(calendar, targets) {
-    const { entry } = calendar;
+async function moveIndicator(entry, targets) {
     const moveCircleY = shouldMoveIndicatorY(targets.circleY, entry.indicator.placedY, targets.legacyCircleY, NUDGE);
     const moveAnchorY = shouldMoveIndicatorY(targets.anchorTarget, entry.indicator.placedAnchorY, targets.legacyAnchor, NUDGE);
 
-    const wanted = [
+    const items = [
         { id: entry.indicator.anchorId, y: targets.anchorTarget, wantsY: moveAnchorY },
         { id: entry.indicator.circleId, y: targets.circleY, wantsY: moveCircleY },
     ];
 
-    let located = await locateEnds(calendar, wanted);
-    if (!located) return { wrote: false, alive: false };
-
-    let moves = planMoves(located, targets);
-
-    // Growing the frame changes its top-left corner whenever it grows up or
-    // left, and with it every child's relative x/y - so the ends are read again
-    // rather than written from numbers that no longer mean the same place.
-    if (moves.length > 0 && calendar.frameId) {
-        let grew = false;
-        try {
-            grew = await growFrame(calendar.frameId, moves.map(({ item, to }) => edgesOf({ ...to, width: item.width, height: item.height })), calendar.rowHeight);
-        } catch (error) {
-            console.warn(`Timeline Builder: could not grow the frame of calendar ${entry.calendarId} for the TODAY indicator`, error);
-        }
-
-        if (grew) {
-            located = await locateEnds(calendar, wanted);
-            if (!located) return { wrote: false, alive: false };
-            moves = planMoves(located, targets);
-        }
-    }
-
     let wrote = false;
 
-    for (const { item, origin, wantsX, wantsY, to } of moves) {
-        const relative = toParent(to, origin);
-        if (wantsX) item.x = relative.x;
-        if (wantsY) item.y = relative.y;
+    for (const { id, y, wantsY } of items) {
+        let item;
+        try {
+            item = await run(() => board.getById(id));
+        } catch (error) {
+            // getById throwing after run() exhausts its retries on a rate
+            // limit is not the same as the item being gone - the call never
+            // completed, so the item's real state is unknown. Treating it as
+            // gone here would call removeIndicator, whose own board.remove
+            // calls would hit the same limit and be swallowed by its
+            // best-effort catches, so circleId/anchorId/connectorId would be
+            // cleared in AppData while the shapes stayed on the board. The
+            // next tick would then see no indicator at all and draw a second
+            // circle, anchor and connector beside the orphaned first set, and
+            // it would silently discard any manual repositioning the user did
+            // - the documented way to adjust the indicator's height and the
+            // connector's length. So a rate limit must leave the ids
+            // untouched and just skip this pass, exactly like anchors.js's
+            // measure() does for the same failure.
+            if (isRateLimitError(error)) {
+                console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
+                return { wrote, alive: false };
+            }
+
+            // Someone deleted a piece of it - but not necessarily all of it.
+            // Simply forgetting the ids here would abandon whatever survives
+            // (the circle, say, if only the anchor was deleted) as an orphan
+            // that AppData no longer points to and the next tick cannot see,
+            // so createIndicator would draw a second circle/anchor/connector
+            // right beside it. The anchor shape has no fill and no border, so
+            // that orphan could never be found or cleaned up by hand.
+            // removeIndicator already tears down all three ids and tolerates
+            // each one being gone, which is exactly what a broken indicator
+            // needs, so reuse it instead of writing a second teardown.
+            await removeIndicator(entry);
+            return { wrote, alive: false };
+        }
+
+        const wantsX = Math.abs(item.x - targets.x) >= NUDGE;
+
+        if (!wantsX && !wantsY) continue;
+
+        if (wantsX) item.x = targets.x;
+        if (wantsY) item.y = y;
         await run(() => item.sync());
         wrote = true;
     }
@@ -416,66 +402,6 @@ async function moveIndicator(calendar, targets) {
     }
 
     return { wrote, alive: true };
-}
-
-/**
- * Reads both ends of the line with the origin of whatever frame each sits in.
- *
- * Returns null when the pass has to stop: on a rate limit (getById or the
- * parent read never completed, so the items' real state is unknown - treating
- * that as gone would call removeIndicator, whose own board.remove calls would
- * hit the same limit and be swallowed, clearing the ids in AppData while the
- * shapes stay; the next tick would then draw a second indicator beside the
- * orphaned one and discard any manual repositioning), on a parent the SDK cannot
- * place, and after giving up on a broken indicator.
- *
- * Someone deleting a piece of it does not mean all of it is gone. Forgetting
- * the ids would abandon whatever survives (the circle, say, if only the anchor
- * was deleted) as an orphan AppData no longer points to; the anchor has no fill
- * and no border, so it could never be found by hand. removeIndicator tears down
- * all three ids and tolerates each one being gone, so it is reused here.
- */
-async function locateEnds(calendar, wanted) {
-    const { entry } = calendar;
-    const frames = new Map();
-    const located = [];
-
-    for (const end of wanted) {
-        let item;
-        let origin;
-        try {
-            item = await run(() => board.getById(end.id));
-            origin = await parentOrigin(item, frames);
-        } catch (error) {
-            if (isRateLimitError(error)) {
-                console.warn(`Timeline Builder: rate limited while moving the TODAY indicator for calendar ${entry.calendarId}, keeping it and skipping this pass.`);
-                return null;
-            }
-
-            await removeIndicator(entry, calendar);
-            return null;
-        }
-
-        if (!origin) {
-            console.warn(`Timeline Builder: the TODAY indicator of calendar ${entry.calendarId} sits in a parent that cannot be placed, leaving it alone.`);
-            return null;
-        }
-
-        located.push({ ...end, item, origin });
-    }
-
-    return located;
-}
-
-/** The ends that need a write, with their final position in board coordinates. */
-function planMoves(located, targets) {
-    return located
-        .map(({ item, origin, y, wantsY }) => {
-            const at = toBoard(item, origin);
-            const wantsX = Math.abs(at.x - targets.x) >= NUDGE;
-            return { item, origin, wantsX, wantsY, to: { x: wantsX ? targets.x : at.x, y: wantsY ? y : at.y } };
-        })
-        .filter(({ wantsX, wantsY }) => wantsX || wantsY);
 }
 
 /**
@@ -641,7 +567,7 @@ export async function updateIndicators(today, { raise = false } = {}) {
     }
 }
 
-async function removeIndicator(entry, calendar) {
+async function removeIndicator(entry) {
     const ids = [entry.indicator.connectorId, entry.indicator.circleId, entry.indicator.anchorId];
 
     for (const id of ids) {
@@ -661,15 +587,4 @@ async function removeIndicator(entry, calendar) {
         placedY: null,
         placedAnchorY: null,
     });
-
-    // The circle usually sits at the frame's top edge, so the frame can shrink
-    // now that it is gone. Guarded: the indicator is already removed and
-    // recorded, and a frame that stays a little too tall costs nothing.
-    if (calendar.frameId) {
-        try {
-            await fitFrame(calendar.frameId, calendar.rowHeight);
-        } catch (error) {
-            console.warn(`Timeline Builder: could not fit the frame of calendar ${entry.calendarId} after removing the TODAY indicator`, error);
-        }
-    }
 }

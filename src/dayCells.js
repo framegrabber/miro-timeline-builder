@@ -1,5 +1,4 @@
 import { board, run, isRateLimitError } from './board.js';
-import { toBoard } from './frameGeometry.js';
 
 /**
  * The day cells of one calendar, indexed by grid column.
@@ -18,12 +17,6 @@ import { toBoard } from './frameGeometry.js';
  * `board.get()` would work without a group and survive an ungrouping, but it is
  * a Level 3 call (500 credits against getById's 50) and returns every shape on
  * the board - including the other year's calendar sitting next to this one.
- *
- * Inside a frame the SDK reports each cell relative to the frame's top-left
- * corner, while the calendar's bottom is in board coordinates. Every cell is
- * converted with the calendar's `origin` (resolved once by measure() off the
- * firstDay anchor, which shares the cells' parent) before comparing or
- * sorting; without a parent the origin is 0 and nothing changes.
  */
 
 // Cells are created at an exact computed y, so this only absorbs float noise.
@@ -48,10 +41,8 @@ export async function dayCellsOf(calendar) {
 
     const dayRowY = calendar.bottom - calendar.rowHeight / 2;
     const sorted = items
-        .map((item) => ({ item, pos: toBoard(item, calendar.origin) }))
-        .filter(({ pos }) => Math.abs(pos.y - dayRowY) < SAME_ROW)
-        .sort((a, b) => a.pos.x - b.pos.x)
-        .map(({ item }) => item);
+        .filter((item) => Math.abs(item.y - dayRowY) < SAME_ROW)
+        .sort((a, b) => a.x - b.x);
 
     // If the count is off, some cell was dragged out or something foreign was
     // dropped onto the row, and every index past that point means a different

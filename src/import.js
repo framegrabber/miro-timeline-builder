@@ -3,10 +3,7 @@ import { board, run, takeStats, isRateLimitError } from './board.js';
 import { findCalendars, updateCalendar } from './anchors.js';
 import { xOfColumn, widthOfColumns, describeRange } from './calendar.js';
 import { parseVacations, planVacations, yearsIn } from './vacation.js';
-import { updateIndicators, DIAMETER_FACTOR } from './today.js';
-import { anchorY, indicatorY, indicatorEdges } from './indicatorGeometry.js';
-import { growFrame, addToFrame, fitFrame } from './frame.js';
-import { edgesOf } from './frameGeometry.js';
+import { updateIndicators } from './today.js';
 
 const METADATA_KEY = 'timelineBuilder';
 
@@ -60,27 +57,7 @@ async function runImport() {
             vacationRows: rows.length,
         });
 
-        // Grow before anything joins the frame: the bars were created in
-        // board coordinates, and a child synced past its frame's edge is
-        // exactly the case we never want to find out about. The planned
-        // indicator is included because updateIndicators below is about to
-        // stretch its line down past the new rows. Only reached when drawRows
-        // succeeded completely - a partial failure throws above, so a half
-        // import never resizes anything and the next good run fits instead.
-        const { frameId } = calendar;
-        if (frameId) {
-            await frameStep('grow the frame for the vacation bars', () =>
-                growFrame(frameId, [...shapes.map(edgesOf), plannedIndicatorEdges(calendar, rows.length)], calendar.rowHeight)
-            );
-        }
-
-        const group = shapes.length > 1 ? await run(() => board.group({ items: shapes })) : null;
-
-        if (frameId) {
-            await frameStep('add the vacation bars to the frame', () =>
-                addToFrame(frameId, { group, items: group ? [] : shapes })
-            );
-        }
+        if (shapes.length > 1) await run(() => board.group({ items: shapes }));
 
         // The bars just changed how far the content reaches below the calendar,
         // and they were drawn after the indicator, so they cover its line. Both
@@ -90,13 +67,6 @@ async function runImport() {
             await updateIndicators(dayjs(), { raise: true });
         } catch (error) {
             console.error('Could not update the TODAY indicator:', error);
-        }
-
-        // Last, so it sees the indicator at its new length: this is what makes
-        // a smaller import (fewer rows than the one just removed) end with a
-        // smaller frame - growFrame above never shrinks.
-        if (frameId) {
-            await frameStep('fit the frame to the calendar', () => fitFrame(frameId, calendar.rowHeight));
         }
 
         logStats(calendar, shapes.length);
@@ -115,31 +85,6 @@ async function runImport() {
         showProblems(problems);
         console.error(error);
     }
-}
-
-// Frame steps are housekeeping around an import that has already landed on the
-// board and in AppData; failing one must never turn that into a reported failure.
-async function frameStep(what, task) {
-    try {
-        await task();
-    } catch (error) {
-        console.warn(`Timeline Builder: could not ${what}:`, error);
-    }
-}
-
-// Where the TODAY indicator will reach once updateIndicators has run with the
-// new row count - only its vertical extent matters, so the first drawn column
-// stands in for x (the indicator always sits within the drawn columns; column
-// 0 would not do, it lies far left of a calendar drawn for part of the year).
-function plannedIndicatorEdges(calendar, contentRows) {
-    const { grid, rowHeight, top, bottom, entry, range } = calendar;
-    const diameter = rowHeight * DIAMETER_FACTOR;
-    return indicatorEdges({
-        x: xOfColumn(grid, range.firstColumn) + grid.shapeWidth / 2,
-        circleY: indicatorY({ top, rowHeight, diameter, reservedRows: entry.holidays?.reservedRows }),
-        anchorY: anchorY({ bottom, rowHeight, padding: grid.padding, contentRows }),
-        diameter,
-    });
 }
 
 /**
