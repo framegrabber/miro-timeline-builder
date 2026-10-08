@@ -23,8 +23,8 @@ with what you find there, not with the paraphrase in this note.
 
 | # | Question | Assumption in code | How to spot the fallback |
 |---|---|---|---|
-| Q1 | Growing a frame up/left (`x`, `y`, `width`, `height` in one `sync()`) — do children keep their board position? | yes | Not a warning: the calendar visibly jumps when holidays for several states are drawn (checklist step 3). |
-| Q2 | Same when shrinking. | yes | Not a warning: the calendar jumps when the frame shrinks (steps 4, 5). |
+| Q1 | Growing a frame up/left (`x`, `y`, `width`, `height` in one `sync()`) — do children keep their board position? | **no** (seen on a board, 2026-10-08): children keep their offset from the frame's top-left, so they move with it. `writeRect` in `src/frame.js` takes the children out, resizes, and puts them back whenever the top-left moves | The calendar jumping up/left when holidays are drawn means the take-out/put-back step did not run or did not work. |
+| Q2 | Same when shrinking. | same as Q1 | The calendar jumping down/right when the frame shrinks (steps 4, 5). |
 | Q3 | After `frame.add(group)`, does an item keep its `groupId`, and does `group.getItems()` report relative coordinates? | `groupId` kept; `getItems()` reports coordinates relative to the frame | Holidays/vacations land on the wrong days after the calendar is in a frame (step 6), or a `Timeline Builder:` warning that no day cells were found. |
 | Q4 | Can a grouped frame child be moved via relative `x`/`y` + `sync()`? | yes | The TODAY circle stays on yesterday's day; a `Timeline Builder: could not ...` line from the indicator move. |
 | Q5 | What happens when a child is `sync()`ed past the frame edge: error, detach, clip? | unknown — so the code always grows the frame *first*, then places items | Only matters if growing fails: `Timeline Builder: could not grow the ... frame` followed by items sticking out of or missing from the frame. |
@@ -32,6 +32,7 @@ with what you find there, not with the paraphrase in this note.
 | Q7 | Does an item created via `createShape` inside a frame's area automatically become its child? | no — the code always calls `frame.add` explicitly | Not a warning; only visible in the snippet output. If yes, the explicit `add` is redundant but harmless. |
 | Q8 | Actual credit cost of `getChildren`, `frame.add`, `createFrame`. | `getChildren` = 500 credits (level 3, via `runLevel3`); the others like normal writes | Rate-limit warnings or 429s in the console during a large import; the `indicator pass` stats line shows more credits than expected. Cannot be measured from the snippet — read it off the developer dashboard / `indicator pass` line. |
 | Q9 | Does `bringToFront` on circle + connector still work inside a frame? | yes | The existing warning `Timeline Builder: could not raise the TODAY indicator ... falling back` (see the [2026-08-11 note](2026-08-11-bringtofront-und-konnektor-unbestaetigt.md)), or the line lying under bars and bands. |
+| Q10 | Does `frame.remove(group)` take a whole group out of a frame in one call, leaving its items where they are on the board? | yes — falls back to removing the group's items one by one | `Timeline Builder: frame … did not let go of group … at once, removing its items one by one.` The fallback works but makes a calendar resize cost one call per day cell. |
 
 **Board check:** run the snippet below once (answers Q1–Q7), then work through
 the checklist (answers Q8, Q9 and the end-to-end behaviour).
@@ -202,8 +203,8 @@ Work through these on a real board, with DevTools open on the panel iframe.
 
 | # | Result | Date | Entered by |
 |---|---|---|---|
-| Q1 | | | |
-| Q2 | | | |
+| Q1 | no — children keep their offset from the frame's top-left; a holiday draw left the bands under the calendar and the sticky on it | 2026-10-08 | Felix Rothballer (screenshot) |
+| Q2 | no — follows from Q1 (same `writeRect`) | 2026-10-08 | inferred from Q1 |
 | Q3 | | | |
 | Q4 | | | |
 | Q5 | | | |
@@ -211,6 +212,7 @@ Work through these on a real board, with DevTools open on the panel iframe.
 | Q7 | | | |
 | Q8 | | | |
 | Q9 | | | |
+| Q10 | | | |
 | Checklist 1–9 | | | |
 
 **Sources:**
