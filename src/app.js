@@ -359,9 +359,6 @@ async function drawCalendar() {
                 edgesList: plannedEdges(settings, rows, range, today),
                 range,
                 rowHeight: settings.shapeHeight,
-                // The same id tagCalendar derives - the first day cell's own -
-                // so the frame's metadata names the calendar before AppData does.
-                calendarId: dayShapesOf(drawnRows, rows)[0].id,
             });
             frameId = frame.id;
         } catch (error) {
@@ -470,12 +467,6 @@ function logDrawStats(year, stats, groupingMs, { framed = false, framingMs = 0 }
     );
 
     console.groupEnd();
-}
-
-// The day row's shapes, in drawn order. tagCalendar picks its anchors out the
-// same way; the first one's id is the calendar's id.
-function dayShapesOf(drawnRows, rows) {
-    return drawnRows[rows.findIndex((row) => row.position === 'drawDays')];
 }
 
 // Where the calendar and its TODAY indicator will sit, in board coordinates,

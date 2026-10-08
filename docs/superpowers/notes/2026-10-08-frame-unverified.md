@@ -32,7 +32,7 @@ with what you find there, not with the paraphrase in this note.
 | Q7 | Does an item created via `createShape` inside a frame's area automatically become its child? | no — the code always calls `frame.add` explicitly | Not a warning; only visible in the snippet output. If yes, the explicit `add` is redundant but harmless. |
 | Q8 | Actual credit cost of `getChildren`, `frame.add`, `createFrame`. | `getChildren` = 500 credits (level 3, via `runLevel3`); the others like normal writes | Rate-limit warnings or 429s in the console during a large import; the `indicator pass` stats line shows more credits than expected. Cannot be measured from the snippet — read it off the developer dashboard / `indicator pass` line. |
 | Q9 | Does `bringToFront` on circle + connector still work inside a frame? | yes | The existing warning `Timeline Builder: could not raise the TODAY indicator ... falling back` (see the [2026-08-11 note](2026-08-11-bringtofront-und-konnektor-unbestaetigt.md)), or the line lying under bars and bands. |
-| Q10 | Does `frame.remove(group)` take a whole group out of a frame in one call, leaving its items where they are on the board? | yes — falls back to removing the group's items one by one | `Timeline Builder: frame … did not let go of group … at once, removing its items one by one.` The fallback works but makes a calendar resize cost one call per day cell. |
+| Q10 | Does `frame.remove(group)` take a whole group out of a frame in one call, leaving its items where they are on the board? Do connectors become frame children? | yes / no — but `writeRect` reads the children again after taking the groups out and takes out whatever is left one by one | `Timeline Builder: frame … still held N shape, M connector after its groups were taken out, taking them out one by one.` (works, but costs one call per item), `… did not let go of group … at once …` (remove(group) threw), or `… would not let go of …, leaving its size as it is` (the frame was not resized). Copy the exact line into the results. |
 
 **Board check:** run the snippet below once (answers Q1–Q7), then work through
 the checklist (answers Q8, Q9 and the end-to-end behaviour).
@@ -212,7 +212,8 @@ Work through these on a real board, with DevTools open on the panel iframe.
 | Q7 | | | |
 | Q8 | | | |
 | Q9 | | | |
-| Q10 | | | |
+| Q10 | open — a fit after holidays failed with "Cannot resize the frame … children would exist outside the parent frame", so something stayed in the frame after the groups were taken out; the warnings above will say what | 2026-10-08 | Felix Rothballer (console) |
+| `frame.setMetadata` | unsupported: "The specified command is unsupported: frame.setMetadata()" — the call was removed | 2026-10-08 | Felix Rothballer (console) |
 | Checklist 1–9 | | | |
 
 **Sources:**

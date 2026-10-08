@@ -66,9 +66,8 @@ export function frameTitle(range)                    // -> describeRange(range)
 export async function parentOrigin(item, cache = new Map())
 
 /** Creates our frame: white, title frameTitle(range), enclosing edgesList plus
- *  FRAME_MARGIN_ROWS * rowHeight. Sets metadata { role: 'frame', calendarId, year }
- *  (a failing metadata write is warned, the frame stays). Returns the Frame. */
-export async function createCalendarFrame({ edgesList, range, rowHeight, calendarId })
+ *  FRAME_MARGIN_ROWS * rowHeight. No metadata: Miro rejects frame.setMetadata. Returns the Frame. */
+export async function createCalendarFrame({ edgesList, range, rowHeight })
 
 /** Grows only, never shrinks. No-op when everything already lies inside.
  *  New content gets FRAME_MARGIN_ROWS * rowHeight margin. */
@@ -189,7 +188,7 @@ Plus the T9 acceptance checklist below.
 
 - `CREDITS_LEVEL_3` next to `CREDITS_PER_ITEM`, with a comment naming which calls are Level 3. `runLevel3` in `board.js`.
 - `parentOrigin`: no `item.parentId` → `BOARD_ORIGIN`. Else `getById(parentId)` (cached); `type !== 'frame'` → `null`.
-- `createCalendarFrame`: `board.createFrame({ title, x, y, width, height, style: { fillColor: '#ffffff' } })`, then `setMetadata('timelineBuilder', { role: 'frame', calendarId, year: range.year })`.
+- `createCalendarFrame`: `board.createFrame({ title, x, y, width, height, style: { fillColor: '#ffffff' } })`. No `setMetadata` — Miro rejects it on frames.
 - `growFrame`: fetch the frame; if `containsEdges(edgesOf(frame), unionEdges(padded new edges))` → nothing. Otherwise `frameRectFor([edgesOf(frame), ...padded new edges], 0)`, write, `sync()`.
 - `fitFrame`: `runLevel3(() => frame.getChildren())`, convert each child position via `originOf(frame)` to board, skip connectors, `frameRectFor(..., margin)`; write only on a change > 0.5. No children and no extras → leave the frame alone.
 - `addToFrame`: as in the contract.

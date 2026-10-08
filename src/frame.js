@@ -26,9 +26,7 @@ import {
 // so the decision to shrug a failure off belongs to the caller, which knows
 // whether it is in the middle of a draw, an import or a tick - and reports it
 // with console.warn('Timeline Builder: ...') instead of failing its own flow.
-// The one exception is the metadata write in createCalendarFrame, see there.
-
-const METADATA_KEY = 'timelineBuilder';
+// The only thing caught in here is a connector refusing frame.add, see attach.
 
 const FRAME_FILL = '#ffffff';
 
@@ -73,18 +71,15 @@ export async function parentOrigin(item, cache = new Map()) {
  * coordinates) plus FRAME_MARGIN_ROWS * rowHeight on every side. Returns the
  * Frame.
  *
- * The frame is tagged { role: 'frame', calendarId, year } like the anchors in
- * anchors.js, so a person (or a later version) looking at it on the board can
- * tell which calendar it belongs to. Nothing reads that tag back - ownership is
- * decided by entry.frameId in AppData - so a failed metadata write costs only
- * the label, and throwing it away along with a perfectly good frame would make
- * the caller fall back to an unframed calendar for no reason. That is why this
- * one write is warned here instead of thrown.
+ * Not tagged with metadata like the calendar's anchors: Miro rejects
+ * frame.setMetadata ("The specified command is unsupported"), although the
+ * reference lists it. Nothing would read it anyway - ownership is decided by
+ * entry.frameId in AppData.
  */
-export async function createCalendarFrame({ edgesList, range, rowHeight, calendarId }) {
+export async function createCalendarFrame({ edgesList, range, rowHeight }) {
     const rect = frameRectFor(edgesList, FRAME_MARGIN_ROWS * rowHeight);
 
-    const frame = await run(() => board.createFrame({
+    return run(() => board.createFrame({
         title: frameTitle(range),
         x: rect.x,
         y: rect.y,
@@ -92,14 +87,6 @@ export async function createCalendarFrame({ edgesList, range, rowHeight, calenda
         height: rect.height,
         style: { fillColor: FRAME_FILL },
     }));
-
-    try {
-        await run(() => frame.setMetadata(METADATA_KEY, { role: 'frame', calendarId, year: range.year }));
-    } catch (error) {
-        console.warn(`Timeline Builder: could not tag the frame of calendar ${calendarId}, keeping it untagged.`, error);
-    }
-
-    return frame;
 }
 
 /**
@@ -183,10 +170,11 @@ export async function fitFrame(frameId, rowHeight, extraEdges = []) {
  * `items` are added individually regardless: things that belong in the frame
  * but not in the group, like the holiday fallback anchors.
  *
- * Connectors are never added individually: the SDK documents no frame.add for
- * them, and a connector follows the items it hangs on anyway. Items that are
- * already children of this frame are skipped, which keeps a retried flow from
- * spending a call (and an error) on each of them.
+ * A connector is tried but never counted as a failure: the SDK documents no
+ * frame.add for one, and it follows the items it hangs on anyway. One only gets
+ * here when the frame held it as a child before writeRect took it out. Items
+ * that are already children of this frame are skipped, which keeps a retried
+ * flow from spending a call (and an error) on each of them.
  *
  * Every item is attempted even when one fails, so a single item that strayed
  * past the edge does not leave the rest of the calendar outside the frame; the
@@ -217,13 +205,13 @@ async function attach(frame, { group = null, items = [] }) {
 
     const failures = [];
     for (const item of singles) {
-        if (item.type === 'connector') continue;
         if (item.parentId === frame.id) continue;
 
         try {
             await run(() => frame.add(item));
         } catch (error) {
             if (isRateLimitError(error)) throw error;
+            if (item.type === 'connector') continue;
             failures.push({ id: item.id, error });
         }
     }
@@ -265,6 +253,13 @@ async function getFrame(frameId) {
  * Putting them back is attempted even when the write failed, so a failure
  * leaves a frame of the wrong size rather than a calendar outside its frame.
  *
+ * Taking the units out is checked, not trusted: the frame's children are read
+ * again afterwards, and whatever is still in - a connector Miro made a child on
+ * its own, a group frame.remove() accepted without letting go - is taken out
+ * one by one and named in a warning. If even that leaves something behind, the
+ * rect is not written at all: Miro would refuse it ("one or more children
+ * would exist outside the parent frame"), and the warning says what held on.
+ *
  * `children` is the frame's getChildren() result when the caller already has
  * it; otherwise it is read here, only when it is actually needed.
  */
@@ -292,6 +287,21 @@ async function writeRect(frame, rect, children = null) {
             detached.push(unit);
             await detach(frame, unit);
         }
+
+        const leftovers = await runLevel3(() => frame.getChildren());
+        if (leftovers.length) {
+            console.warn(`Timeline Builder: frame ${frame.id} still held ${describeItems(leftovers)} after its groups were taken out, taking them out one by one.`);
+            for (const item of leftovers) {
+                detached.push({ item });
+                await run(() => frame.remove(item));
+            }
+
+            const stuck = await runLevel3(() => frame.getChildren());
+            if (stuck.length) {
+                throw new Error(`frame ${frame.id} would not let go of ${describeItems(stuck)}, leaving its size as it is`);
+            }
+        }
+
         await syncRect(frame, rect);
     } catch (error) {
         failure = error;
@@ -305,6 +315,13 @@ async function writeRect(frame, rect, children = null) {
     }
 
     if (failure) throw failure;
+}
+
+/** "2 connector, 1 shape" - for warnings about what a frame held on to. */
+function describeItems(items) {
+    const counts = new Map();
+    for (const item of items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+    return [...counts].map(([type, count]) => `${count} ${type}`).join(', ');
 }
 
 // One write for all four values; see writeRect for why they cannot be written
