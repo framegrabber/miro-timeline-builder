@@ -14,6 +14,7 @@ import {
 import { describeRange } from './calendar.js';
 import { drawHolidays, removeHolidays, recordHolidays } from './holidayDraw.js';
 import { updateIndicators } from './today.js';
+import { fitFrame } from './frame.js';
 
 // Fetched once per panel load and kept: the list of German states does not
 // change while somebody has a board open.
@@ -196,6 +197,18 @@ async function runHolidays() {
             await updateIndicators(dayjs(), { raise: true });
         } catch (error) {
             console.error('Could not update the TODAY indicator:', error);
+        }
+
+        // One closing fit to whatever is actually in our frame now - this is
+        // also what shrinks it when the new block is smaller than the old one,
+        // since drawHolidays only ever grows. A failure leaves a frame that is
+        // too large, nothing worse.
+        if (calendar.frameId) {
+            try {
+                await fitFrame(calendar.frameId, calendar.rowHeight);
+            } catch (error) {
+                console.warn(`Timeline Builder: could not fit the frame of calendar ${calendar.entry.calendarId}`, error);
+            }
         }
 
         logStats(calendar, planned.stickies.length, drawn.createdCount);

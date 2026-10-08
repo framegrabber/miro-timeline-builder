@@ -11,6 +11,7 @@ import {
     shouldPass,
     anchorY,
     legacyAnchorY,
+    indicatorEdges,
     MIN_ANCHOR_ROWS,
     connectorState,
     endpointItemId,
@@ -333,6 +334,35 @@ test('an anchor dragged by hand is not clawed back while the target is unchanged
     // placedAnchorY is what we wrote; the user has since dragged the anchor
     // 400px further down, which the guard never sees and must not undo.
     assert.equal(shouldMoveIndicatorY(target, target, legacyAnchorY({ bottom, rowHeight }), 0.5), false);
+});
+
+// --- the indicator's footprint, for the frame ---------------------------------
+
+test('indicatorEdges spans the circle top to the anchor bottom', () => {
+    const edges = indicatorEdges({ x: 500, circleY: 100, anchorY: 900, diameter: 160 });
+
+    assert.deepEqual(edges, { left: 420, top: 20, right: 580, bottom: 904 });
+});
+
+test('indicatorEdges takes the anchor size into account', () => {
+    const edges = indicatorEdges({ x: 0, circleY: 0, anchorY: 100, diameter: 10, anchorSize: 40 });
+
+    // The wider of the two shapes sets the width; the anchor's half height
+    // extends the bottom.
+    assert.deepEqual(edges, { left: -20, top: -5, right: 20, bottom: 120 });
+});
+
+test('indicatorEdges matches what syncIndicator plans with', () => {
+    // The same chain callers use to plan a frame before the indicator exists:
+    // the circle's centre from indicatorY, the anchor's from anchorY.
+    const rowHeight = 100;
+    const diameter = rowHeight * 1.6;
+    const circleY = indicatorY({ top: 1000, rowHeight, diameter, reservedRows: 2 });
+    const lower = anchorY({ bottom: 2000, rowHeight, padding: 0, contentRows: 0 });
+    const edges = indicatorEdges({ x: 0, circleY, anchorY: lower, diameter });
+
+    assert.equal(edges.top, 1000 - 2 * rowHeight - rowHeight / 2 - diameter);
+    assert.equal(edges.bottom, 2000 + 3 * rowHeight + 4);
 });
 
 // --- the tick's day guard -----------------------------------------------------

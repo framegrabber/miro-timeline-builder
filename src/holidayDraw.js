@@ -4,6 +4,10 @@ import { xOfColumn, widthOfColumns, dayBlocks } from './calendar.js';
 import { dayColor } from './colors.js';
 import { layoutBlock, offsetOverlapping, fitFontSize } from './holidays.js';
 import { HOLIDAY_COLORS } from './stickyColors.js';
+import { toBoard, edgesOf } from './frameGeometry.js';
+import { growFrame, addToFrame } from './frame.js';
+import { indicatorEdges, indicatorY, anchorY } from './indicatorGeometry.js';
+import { DIAMETER_FACTOR } from './today.js';
 
 const LINE_COLOR = '#000000';
 const LINE_WIDTH = 1;
@@ -259,10 +263,15 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
                 }
             }
 
+            // The cell's own x/y are relative to its parent frame when it has
+            // one; the anchor is created on the board, not in the frame, so it
+            // needs the cell's board position. For an unframed calendar the
+            // origin is (0, 0) and this is exactly cell.x/cell.y.
+            const cellOnBoard = toBoard(cell, calendar.origin);
             const anchor = await run(() => board.createShape({
                 shape: 'rectangle',
-                x: cell.x,
-                y: cell.y,
+                x: cellOnBoard.x,
+                y: cellOnBoard.y,
                 width: ANCHOR_SIZE,
                 height: ANCHOR_SIZE,
                 style: { fillOpacity: 0, borderOpacity: 0, borderWidth: 0 },
@@ -336,15 +345,64 @@ export async function drawHolidays(calendar, cells, { stickies, rows }) {
     // cell, and the connector would then point at whatever now sits under it
     // instead of at the holiday's date - the whole meaning of the drawing.
     const anchorIds = new Set(anchors.map((item) => item.id));
-    const groupable = created.filter((item) => item.type !== 'connector' && !anchorIds.has(item.id));
+    const boxed = created.filter((item) => item.type !== 'connector');
+
+    // Grow our frame before anything is added to it: frame.add wants the item
+    // already inside, and the state labels in particular reach out to the
+    // left of the calendar. The TODAY circle is about to be lifted above this
+    // block by updateIndicators, so its planned position is included too -
+    // otherwise the indicator would have to grow the frame a second time a
+    // moment later. Only the vertical extent of that plan matters; any column
+    // inside the calendar will do for x.
+    if (calendar.frameId && boxed.length > 0) {
+        try {
+            const diameter = rowHeight * DIAMETER_FACTOR;
+            const planned = indicatorEdges({
+                x: centerXof(range.firstColumn),
+                circleY: indicatorY({ top, rowHeight, diameter, reservedRows: layout.reservedRows }),
+                anchorY: anchorY({
+                    bottom: calendar.bottom,
+                    rowHeight,
+                    padding: grid.padding,
+                    contentRows: calendar.entry.vacationRows,
+                }),
+                diameter,
+            });
+            await growFrame(calendar.frameId, [...boxed.map(edgesOf), planned], rowHeight);
+        } catch (error) {
+            console.warn(
+                `Timeline Builder: could not grow the frame for the holiday block on calendar ${calendar.entry.calendarId}`,
+                error
+            );
+        }
+    }
+
+    const groupable = boxed.filter((item) => !anchorIds.has(item.id));
+    let group = null;
     if (groupable.length > 1) {
         try {
-            await run(() => board.group({ items: groupable }));
+            group = await run(() => board.group({ items: groupable }));
         } catch (error) {
             // A grouping failure costs nothing that matters - the items are
             // already a complete, working holiday block without it.
             console.warn(
                 `Timeline Builder: could not group the holiday block for calendar ${calendar.entry.calendarId}`,
+                error
+            );
+        }
+    }
+
+    // Into the frame, so the block travels with the calendar when the frame
+    // is dragged. The anchors go in individually alongside the group: they
+    // stay out of the group for the reason above, but they still have to
+    // move with their cell. Without a group every boxed item goes in on its
+    // own; connectors never do, they follow their endpoints.
+    if (calendar.frameId && boxed.length > 0) {
+        try {
+            await addToFrame(calendar.frameId, group ? { group, items: anchors } : { items: boxed });
+        } catch (error) {
+            console.warn(
+                `Timeline Builder: could not add the holiday block to the frame of calendar ${calendar.entry.calendarId}`,
                 error
             );
         }

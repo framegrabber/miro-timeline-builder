@@ -19,6 +19,16 @@
 // Level 1 in Miro's terms - covers createShape, group, and most item actions.
 export const CREDITS_PER_ITEM = 50;
 
+// Level 3 - ten times a Level 1 call. Of what this app uses, frame.getChildren
+// is documented at this level (as are board.get, board.getSelection and
+// item.getConnectors, which we deliberately avoid). Miro's credit table does
+// not list frame.getChildren itself, only its reference page does, so the real
+// cost is one of the open board checks in
+// docs/superpowers/notes/2026-10-08-frame-unverified.md. Booking it too high
+// only makes us pace a little early; booking it at 50 would let one fitFrame
+// per calendar quietly eat into the budget we promised ourselves we would keep.
+export const CREDITS_LEVEL_3 = 500;
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 

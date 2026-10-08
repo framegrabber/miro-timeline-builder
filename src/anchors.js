@@ -1,5 +1,7 @@
 import { board, run, isRateLimitError } from './board.js';
 import { gridFrom, rangeFrom, fullYearRange } from './calendar.js';
+import { parentOrigin } from './frame.js';
+import { toBoard } from './frameGeometry.js';
 
 const APP_DATA_KEY = 'calendars';
 const METADATA_KEY = 'timelineBuilder';
@@ -16,8 +18,13 @@ const METADATA_KEY = 'timelineBuilder';
  * AppData is only an index. If it is lost, everything could be rebuilt from a
  * metadata scan; the other way round it could not. That is why the tags sit on
  * the shapes and not only in AppData.
+ *
+ * `frameId` is the frame we created around this calendar, or null when there
+ * is none (frame creation failed, or the caller does not frame). It is always
+ * written so a fresh entry has a uniform shape; an entry from before frames
+ * existed simply lacks the field, which reads as null - "no frame of ours".
  */
-export async function tagCalendar({ drawnRows, rows, year, range, indicatorEnabled = true }) {
+export async function tagCalendar({ drawnRows, rows, year, range, indicatorEnabled = true, frameId = null }) {
     const dayRowIndex = rows.findIndex((row) => row.position === 'drawDays');
     const dayShapes = drawnRows[dayRowIndex];
 
@@ -55,6 +62,7 @@ export async function tagCalendar({ drawnRows, rows, year, range, indicatorEnabl
         },
         indicator: { enabled: indicatorEnabled, circleId: null, anchorId: null, connectorId: null, placedY: null, placedAnchorY: null },
         vacationItemIds: [],
+        frameId,
     });
     await writeCalendars(calendars);
 
@@ -83,6 +91,15 @@ export async function tagCalendar({ drawnRows, rows, year, range, indicatorEnabl
  * The resolved calendar also carries `groupId`, taken off the firstDay anchor.
  * It is undefined for a calendar whose group was dissolved by hand; callers
  * that need the day cells must handle that (see dayCells.js).
+ *
+ * Every position on the resolved calendar (grid, top, bottom) is in board
+ * coordinates, even when the anchors sit inside a frame and the SDK reports
+ * them relative to its top-left corner. The resolved calendar carries that
+ * frame's `origin` (BOARD_ORIGIN without a parent) so callers reading other
+ * children of the same frame - the day cells, holiday anchors - can convert
+ * them the same way. `frameId` is set only when that parent is the frame we
+ * created ourselves; a user's own frame is converted through but never
+ * resized or added to.
  */
 export async function findCalendars() {
     const stored = await readCalendars();
@@ -166,6 +183,14 @@ async function writeCalendars(calendars) {
  * Returns a reason alongside the calendar so callers can tell an unresolvable
  * anchor (the entry should be forgotten) apart from a transient failure or an
  * implausible measurement (the entry stays, only the draw is skipped).
+ *
+ * The anchors' parent origin is resolved once, off firstDay, and applied to
+ * all three: they belong to one calendar, so they must share one parent. If
+ * they do not (a cell dragged out of the frame), converting each with its own
+ * origin would hide a calendar that is no longer in one piece, so it is
+ * reported as implausible instead - like a cell dragged out of the group.
+ * A calendar without a parent gets origin 0, and adding 0 leaves every
+ * coordinate bit-identical to what was measured before frames existed.
  */
 async function measure(entry) {
     let firstDay;
@@ -188,6 +213,31 @@ async function measure(entry) {
         return { calendar: null, reason: 'missing' };
     }
 
+    // A parent that is not a frame reports -Infinity coordinates, which no
+    // conversion can repair; parentOrigin says so with null. A rate limit while
+    // fetching the frame is the same transient failure as one on getById
+    // above, and is kept apart from 'implausible' for the same reason.
+    let origin;
+    try {
+        origin = await parentOrigin(firstDay);
+    } catch (error) {
+        if (isRateLimitError(error)) return { calendar: null, reason: 'rate-limited' };
+        // Any other failure fetching the parent leaves its origin unknown.
+        // The anchors themselves exist, so the entry must not be dropped;
+        // skipping this pass keeps it, like any implausible measurement.
+        return { calendar: null, reason: 'implausible', detail: 'parent frame could not be read' };
+    }
+    if (!origin) {
+        return { calendar: null, reason: 'implausible', detail: 'calendar sits in an unsupported parent' };
+    }
+    if (lastDay.parentId !== firstDay.parentId || topLeft.parentId !== firstDay.parentId) {
+        return { calendar: null, reason: 'implausible', detail: 'calendar anchors sit in different parents' };
+    }
+
+    const firstPos = toBoard(firstDay, origin);
+    const lastPos = toBoard(lastDay, origin);
+    const topLeftPos = toBoard(topLeft, origin);
+
     // An entry without a range is a calendar drawn before windows existed: the
     // whole year, by definition. A stored range that no longer resolves (an
     // impossible from/to, a hand-edited AppData blob) is treated like an
@@ -202,8 +252,8 @@ async function measure(entry) {
     }
 
     const grid = gridFrom({
-        firstCenterX: firstDay.x,
-        lastCenterX: lastDay.x,
+        firstCenterX: firstPos.x,
+        lastCenterX: lastPos.x,
         cellWidth: firstDay.width,
         columns: range.columns,
         firstColumn: range.firstColumn,
@@ -219,13 +269,18 @@ async function measure(entry) {
             range,
             grid,
             rowHeight: firstDay.height,
-            top: topLeft.y - topLeft.height / 2,
-            bottom: firstDay.y + firstDay.height / 2,
+            top: topLeftPos.y - topLeft.height / 2,
+            bottom: firstPos.y + firstDay.height / 2,
             // Shape.groupId is readonly and already on the anchor we just
             // fetched, so the whole calendar becomes addressable without a
             // single byte having been written at draw time - and without a
             // migration for calendars drawn before this existed.
             groupId: firstDay.groupId,
+            origin,
+            // Only our own frame is managed. A calendar the user dragged into a
+            // frame of their own still gets converted via `origin`, but must
+            // never see that frame resized or have items added to it.
+            frameId: entry.frameId && firstDay.parentId === entry.frameId ? entry.frameId : null,
         },
         reason: null,
     };
